@@ -1,0 +1,231 @@
+package com.sendavida.services;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class EcoPlacesService {
+    @Value("${overpass.url}")
+    private String overpassUrl;
+
+    private static final long TTL_MS = 6L * 60L * 60L * 1000L; // 6h
+
+    private final WebClient.Builder webClientBuilder;
+    private final ObjectMapper mapper;
+
+    private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+
+    private record CacheEntry(long storedAtMs, List<Map<String, Object>> items) {}
+
+    public Map<String, Object> listar(String tipo, String q, int page, int size) {
+        String t = normalizeTipo(tipo);
+        List<Map<String, Object>> base = getOrFetch(t);
+
+        List<Map<String, Object>> filtered = base;
+        String query = q == null ? "" : q.trim();
+        if (!query.isBlank()) {
+            String needle = normalizeText(query);
+            filtered = base.stream()
+                    .filter(row -> normalizeText(String.valueOf(row.getOrDefault("nombre", ""))).contains(needle))
+                    .toList();
+        }
+
+        int p = Math.max(0, page);
+        int s = Math.max(1, Math.min(size, 50));
+        int total = filtered.size();
+        int from = Math.min(total, p * s);
+        int to = Math.min(total, from + s);
+        List<Map<String, Object>> items = from >= to ? List.of() : filtered.subList(from, to);
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("tipo", t);
+        out.put("page", p);
+        out.put("size", s);
+        out.put("total", total);
+        out.put("items", items);
+        return out;
+    }
+
+    private List<Map<String, Object>> getOrFetch(String tipo) {
+        CacheEntry ce = cache.get(tipo);
+        long now = System.currentTimeMillis();
+        if (ce != null && now - ce.storedAtMs() < TTL_MS) return ce.items();
+
+        synchronized (("EcoPlacesService:" + tipo).intern()) {
+            CacheEntry ce2 = cache.get(tipo);
+            if (ce2 != null && now - ce2.storedAtMs() < TTL_MS) return ce2.items();
+
+            List<Map<String, Object>> items = fetchFromOverpass(tipo);
+            cache.put(tipo, new CacheEntry(System.currentTimeMillis(), items));
+            return items;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> fetchFromOverpass(String tipo) {
+        try {
+            String query = buildOverpassQueryForElSalvador(tipo);
+            String body = "data=" + java.net.URLEncoder.encode(query, StandardCharsets.UTF_8);
+
+            String raw = webClientBuilder.build()
+                    .post()
+                    .uri(overpassUrl)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            Map<String, Object> json = mapper.readValue(raw, Map.class);
+            List<Map<String, Object>> elements = (List<Map<String, Object>>) json.getOrDefault("elements", Collections.emptyList());
+
+            Map<String, Map<String, Object>> unique = new LinkedHashMap<>();
+            for (Map<String, Object> el : elements) {
+                String osmType = String.valueOf(el.get("type"));
+                Object idObj = el.get("id");
+                if (idObj == null) continue;
+
+                Map<String, Object> tags = (Map<String, Object>) el.get("tags");
+                if (tags == null || tags.isEmpty()) continue;
+
+                String name = firstString(tags, "name:es", "name");
+                if (name == null || name.isBlank()) continue;
+
+                Double lat = null;
+                Double lng = null;
+                if ("node".equals(osmType)) {
+                    Object la = el.get("lat");
+                    Object lo = el.get("lon");
+                    if (la instanceof Number n1 && lo instanceof Number n2) {
+                        lat = n1.doubleValue();
+                        lng = n2.doubleValue();
+                    }
+                } else {
+                    Map<String, Object> center = (Map<String, Object>) el.get("center");
+                    if (center != null) {
+                        Object la = center.get("lat");
+                        Object lo = center.get("lon");
+                        if (la instanceof Number n1 && lo instanceof Number n2) {
+                            lat = n1.doubleValue();
+                            lng = n2.doubleValue();
+                        }
+                    }
+                }
+                if (lat == null || lng == null) continue;
+
+                String key = osmType + ":" + idObj;
+                if (unique.containsKey(key)) continue;
+
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("osm_type", osmType);
+                row.put("osm_id", idObj);
+                row.put("nombre", name);
+                row.put("tipo", tipo);
+                row.put("lat", lat);
+                row.put("lng", lng);
+                row.put("tags", tags);
+                unique.put(key, row);
+            }
+
+            List<Map<String, Object>> out = new ArrayList<>(unique.values());
+            out.sort(Comparator.comparing(o -> String.valueOf(o.getOrDefault("nombre", ""))));
+            return out;
+        } catch (Exception e) {
+            log.error("EcoPlaces Overpass error ({}) : {}", tipo, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private static String buildOverpassQueryForElSalvador(String tipo) {
+        // Importante: filtramos por El Salvador (ISO=SV) y exigimos [name] para reducir volumen.
+        String selectors = switch (tipo) {
+            case "playas" -> """
+                node["natural"="beach"]["name"](area.a);
+                way["natural"="beach"]["name"](area.a);
+                relation["natural"="beach"]["name"](area.a);
+                """;
+            case "rios" -> """
+                way["waterway"="river"]["name"](area.a);
+                relation["waterway"="river"]["name"](area.a);
+                way["waterway"="riverbank"]["name"](area.a);
+                relation["waterway"="riverbank"]["name"](area.a);
+                """;
+            case "lagos" -> """
+                way["natural"="water"]["water"="lake"]["name"](area.a);
+                relation["natural"="water"]["water"="lake"]["name"](area.a);
+                """;
+            case "parques" -> """
+                node["leisure"="park"]["name"](area.a);
+                way["leisure"="park"]["name"](area.a);
+                relation["leisure"="park"]["name"](area.a);
+                way["boundary"="protected_area"]["name"](area.a);
+                relation["boundary"="protected_area"]["name"](area.a);
+                """;
+            case "volcanes" -> """
+                node["natural"="volcano"]["name"](area.a);
+                way["natural"="volcano"]["name"](area.a);
+                relation["natural"="volcano"]["name"](area.a);
+                """;
+            case "montanas" -> """
+                node["natural"="peak"]["name"](area.a);
+                way["natural"="peak"]["name"](area.a);
+                relation["natural"="peak"]["name"](area.a);
+                """;
+            default -> "";
+        };
+
+        return """
+            [out:json][timeout:25];
+            area["ISO3166-1"="SV"][admin_level=2]->.a;
+            (
+            %s
+            );
+            out center;
+            """.formatted(selectors);
+    }
+
+    private static String normalizeTipo(String raw) {
+        String t = raw == null ? "" : raw.trim().toLowerCase();
+        t = Normalizer.normalize(t, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        if (t.equals("playa")) return "playas";
+        if (t.equals("rio")) return "rios";
+        if (t.equals("lago")) return "lagos";
+        if (t.equals("parque")) return "parques";
+        if (t.equals("volcan")) return "volcanes";
+        if (t.equals("montana")) return "montanas";
+
+        // Default si viene vacío o desconocido
+        if (t.isBlank()) return "playas";
+        return t;
+    }
+
+    private static String normalizeText(String raw) {
+        String t = raw == null ? "" : raw.trim().toLowerCase();
+        t = Normalizer.normalize(t, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return t;
+    }
+
+    private static String firstString(Map<String, Object> m, String... keys) {
+        for (String k : keys) {
+            Object v = m.get(k);
+            if (v != null) {
+                String s = String.valueOf(v);
+                if (!s.isBlank()) return s;
+            }
+        }
+        return null;
+    }
+}
+

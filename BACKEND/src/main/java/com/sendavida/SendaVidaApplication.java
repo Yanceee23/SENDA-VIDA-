@@ -1,0 +1,10 @@
+package com.sendavida;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class SendaVidaApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(SendaVidaApplication.class, args);
+    }
+}
