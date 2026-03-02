@@ -1,0 +1,147 @@
+[
+  {
+    "id": 1,
+    "tipo": "volcanes",
+    "nombre": "Sendero Volcán Verde",
+    "distanciaKm": 8.4,
+    "tiempoMin": 150,
+    "dificultad": "Media",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Miradores, bosque nuboso, refugio",
+    "gpsInicio": { "lat": 14.5312, "lng": -90.5401 },
+    "gpsFin": { "lat": 14.5489, "lng": -90.525 }
+  },
+  {
+    "id": 2,
+    "tipo": "volcanes",
+    "nombre": "Ruta Volcánica Familiar",
+    "distanciaKm": 4.1,
+    "tiempoMin": 75,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Área de descanso, mirador, señalización",
+    "gpsInicio": { "lat": 14.568, "lng": -90.505 },
+    "gpsFin": { "lat": 14.5755, "lng": -90.4962 }
+  },
+  {
+    "id": 3,
+    "tipo": "montanas",
+    "nombre": "Cresta de Montaña Azul",
+    "distanciaKm": 10.2,
+    "tiempoMin": 210,
+    "dificultad": "Difícil",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Miradores, puntos de agua, pasos estrechos",
+    "gpsInicio": { "lat": 14.613, "lng": -90.492 },
+    "gpsFin": { "lat": 14.641, "lng": -90.468 }
+  },
+  {
+    "id": 4,
+    "tipo": "montanas",
+    "nombre": "Bosque Alto (Circuito)",
+    "distanciaKm": 6.7,
+    "tiempoMin": 120,
+    "dificultad": "Media",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Refugio, señalización, vistas panorámicas",
+    "gpsInicio": { "lat": 14.589, "lng": -90.522 },
+    "gpsFin": { "lat": 14.589, "lng": -90.522 }
+  },
+  {
+    "id": 5,
+    "tipo": "parques",
+    "nombre": "Parque Ecológico Central",
+    "distanciaKm": 3.6,
+    "tiempoMin": 55,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Jardines, senderos señalizados, puntos de sombra",
+    "gpsInicio": { "lat": 14.627, "lng": -90.515 },
+    "gpsFin": { "lat": 14.632, "lng": -90.507 }
+  },
+  {
+    "id": 6,
+    "tipo": "parques",
+    "nombre": "Reserva Verde (Sendero corto)",
+    "distanciaKm": 2.4,
+    "tiempoMin": 40,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Aves, área protegida, mirador pequeño",
+    "gpsInicio": { "lat": 14.648, "lng": -90.527 },
+    "gpsFin": { "lat": 14.651, "lng": -90.521 }
+  },
+  {
+    "id": 7,
+    "tipo": "rios",
+    "nombre": "Río Claro (Cascada)",
+    "distanciaKm": 5.3,
+    "tiempoMin": 95,
+    "dificultad": "Media",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Cascada, rocas resbaladizas, puntos de agua",
+    "gpsInicio": { "lat": 14.564, "lng": -90.575 },
+    "gpsFin": { "lat": 14.552, "lng": -90.56 }
+  },
+  {
+    "id": 8,
+    "tipo": "rios",
+    "nombre": "Sendero del Río (Sombras)",
+    "distanciaKm": 3.9,
+    "tiempoMin": 70,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Sombra constante, áreas de descanso",
+    "gpsInicio": { "lat": 14.575, "lng": -90.553 },
+    "gpsFin": { "lat": 14.585, "lng": -90.542 }
+  },
+  {
+    "id": 9,
+    "tipo": "lagos",
+    "nombre": "Lago Espejo (Orilla)",
+    "distanciaKm": 7.1,
+    "tiempoMin": 130,
+    "dificultad": "Media",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Miradores, muelle, puntos de interés",
+    "gpsInicio": { "lat": 14.49, "lng": -90.63 },
+    "gpsFin": { "lat": 14.505, "lng": -90.615 }
+  },
+  {
+    "id": 10,
+    "tipo": "lagos",
+    "nombre": "Circuito del Lago (Familiar)",
+    "distanciaKm": 4.8,
+    "tiempoMin": 85,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Alta",
+    "puntosInteres": "Orilla, sombra, refugios",
+    "gpsInicio": { "lat": 14.502, "lng": -90.61 },
+    "gpsFin": { "lat": 14.502, "lng": -90.61 }
+  },
+  {
+    "id": 11,
+    "tipo": "playas",
+    "nombre": "Playa Serena (Costa)",
+    "distanciaKm": 5.6,
+    "tiempoMin": 90,
+    "dificultad": "Fácil",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Puntos de agua, sombra, zona de descanso",
+    "gpsInicio": { "lat": 13.92, "lng": -90.8 },
+    "gpsFin": { "lat": 13.93, "lng": -90.78 }
+  },
+  {
+    "id": 12,
+    "tipo": "playas",
+    "nombre": "Ruta Dunas (Amanecer)",
+    "distanciaKm": 3.2,
+    "tiempoMin": 55,
+    "dificultad": "Media",
+    "nivelSeguridad": "Media",
+    "puntosInteres": "Dunas, mirador, viento fuerte",
+    "gpsInicio": { "lat": 13.935, "lng": -90.785 },
+    "gpsFin": { "lat": 13.945, "lng": -90.77 }
+  }
+]
+

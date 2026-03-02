@@ -1,0 +1,52 @@
+node_modules/
+.expo/
+android/
+ios/
+.git/
+*.log
+*.map
+.DS_Store
+coverage/
+.env
+.env.local
+# Dependencias y caches locales
+node_modules/
+.npm/
+.yarn/
+
+# Expo / React Native temporales
+.expo/
+.expo-shared/
+.metro-cache/
+.cache/
+dist/
+web-build/
+
+# Builds y artefactos locales
+android/
+ios/
+android-cmdline/
+*.apk
+*.aab
+*.ipa
+*.tar
+*.tar.gz
+*.tgz
+
+# Logs y archivos de sistema
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+Thumbs.db
+
+# Archivos locales / entorno
+.env
+.env.*
+!.env.example
+java.lang.Thread
+
+# Control de versiones
+.git/
+.gitignore
