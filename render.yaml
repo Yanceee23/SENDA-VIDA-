@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: senda-vida
+    runtime: docker
+    dockerfilePath: ./BACKEND/Dockerfile
+    dockerContext: ./BACKEND
+    envVars:
+      - key: PORT
+        value: 8084

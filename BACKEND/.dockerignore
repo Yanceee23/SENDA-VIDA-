@@ -1,0 +1,7 @@
+target/
+.mvn/wrapper/maven-wrapper.jar
+node_modules/
+.git/
+*.md
+uploads/
+*.log

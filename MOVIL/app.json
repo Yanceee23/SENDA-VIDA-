@@ -21,6 +21,7 @@
     },
     "android": {
       "package": "com.sendavida.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
