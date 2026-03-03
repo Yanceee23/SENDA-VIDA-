@@ -1,5 +1,14 @@
 ## Probar en emulador (Android Studio + Expo Go)
 
+### 0) Configuración .env
+Crea el archivo `.env` en `MOVIL/` (copia de `.env.example`) con la URL del backend para emulador:
+
+```
+EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8084/api
+```
+
+`10.0.2.2` es el alias del host en el emulador Android (equivale a localhost de tu PC). Sin esto, la app pedirá configurar la URL manualmente en Ajustes.
+
 ### 1) Instala Android Studio + SDK
 - En Android Studio abre **SDK Manager** e instala:
   - **Android SDK Platform** (una API estable, p. ej. 34/35)
