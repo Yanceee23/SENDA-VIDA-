@@ -69,6 +69,7 @@ com\sendavida\models\Actividad.class
 com\sendavida\repository\RetoRepository.class
 com\sendavida\models\Reto.class
 com\sendavida\services\EmergenciaService.class
+com\sendavida\config\CorsConfig$1.class
 com\sendavida\controllers\FotoController.class
 com\sendavida\services\RecomendacionService.class
 com\sendavida\controllers\HidratacionController.class
@@ -89,3 +90,4 @@ com\sendavida\models\Hidratacion.class
 com\sendavida\config\SecurityConfig.class
 com\sendavida\repository\RutaRepository.class
 com\sendavida\models\Usuario.class
+com\sendavida\config\CorsConfig.class

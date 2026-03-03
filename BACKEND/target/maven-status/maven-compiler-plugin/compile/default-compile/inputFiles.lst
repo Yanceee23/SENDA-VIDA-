@@ -69,6 +69,7 @@ C:\APPS\BACKEND\src\main\java\com\sendavida\controllers\AlimentacionController.j
 C:\APPS\BACKEND\src\main\java\com\sendavida\models\Estadistica.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\services\AlimentacionService.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\repository\EmergenciaRepository.java
+C:\APPS\BACKEND\src\main\java\com\sendavida\config\CorsConfig.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\controllers\EmergenciaController.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\controllers\EstadisticaController.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\repository\UbicacionCompartidaRepository.java
