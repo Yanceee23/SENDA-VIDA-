@@ -73,6 +73,34 @@ npm start
 
 Escanea el código QR con Expo Go en tu celular para probar la app.
 
+## Producción (Render + APK)
+
+Para desplegar el backend en Render y generar una APK que se conecte por HTTPS:
+
+### Paso 1: Conectar el repo a Render
+
+1. Entra en [dashboard.render.com](https://dashboard.render.com)
+2. **New** → **Blueprint**
+3. Conecta tu repositorio de GitHub (el que contiene `render.yaml`)
+4. Render desplegará automáticamente PostgreSQL y el backend Spring Boot
+
+La API quedará disponible en **https://senda-vida.onrender.com/api**
+
+### Paso 2: Generar la APK
+
+Ejecuta el script desde la carpeta del proyecto:
+
+```powershell
+cd MOVIL
+.\build-apk.ps1
+```
+
+El script instala dependencias y lanza el build en EAS Cloud. Cuando termine, descarga la APK desde [expo.dev](https://expo.dev). La app se conectará a `https://senda-vida.onrender.com/api`.
+
+**Importante:** Ejecuta siempre desde `MOVIL` (donde está `app.json` y `package.json`). Si ejecutas `eas build` desde la raíz del repo, el build puede fallar.
+
+---
+
 ## Notas opcionales
 
 - **Firebase:** El backend usa Firebase para notificaciones push. Si no tienes `firebase-service-account.json` en `BACKEND/src/main/resources/`, el backend sigue funcionando pero sin FCM.
