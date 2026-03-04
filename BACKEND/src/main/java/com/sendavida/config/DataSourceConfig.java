@@ -51,8 +51,12 @@ public class DataSourceConfig {
 
         int port = dbUri.getPort() > 0 ? dbUri.getPort() : 5432;
         String jdbcUrl = "jdbc:postgresql://" + dbUri.getHost() + ":" + port + dbUri.getPath();
-        if (dbUri.getQuery() != null && !dbUri.getQuery().isEmpty()) {
-            jdbcUrl += "?" + dbUri.getQuery();
+        String query = dbUri.getQuery();
+        if (query != null && !query.isEmpty()) {
+            jdbcUrl += "?" + query;
+        } else if (dbUri.getHost() != null && dbUri.getHost().contains(".render.com")) {
+            // Render PostgreSQL requiere SSL
+            jdbcUrl += "?sslmode=require";
         }
 
         HikariConfig config = new HikariConfig();
