@@ -17,5 +17,13 @@ services:
         fromDatabase:
           name: senda-vida-db
           property: connectionString
+      - key: DATABASE_USERNAME
+        fromDatabase:
+          name: senda-vida-db
+          property: user
+      - key: DATABASE_PASSWORD
+        fromDatabase:
+          name: senda-vida-db
+          property: password
       - key: JWT_SECRET
         generateValue: true
