@@ -8,7 +8,7 @@ services:
     runtime: docker
     rootDir: BACKEND
     dockerfilePath: Dockerfile
-    dockerContext: .
+    dockerContext: BACKEND
     envVars:
       - key: PORT
         value: 8084
