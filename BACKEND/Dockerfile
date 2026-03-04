@@ -7,7 +7,7 @@ COPY BACKEND/.mvn .mvn
 COPY BACKEND/mvnw .
 RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
 
-COPY BACKEND/src .
+COPY BACKEND/src ./src
 
 RUN ./mvnw package -DskipTests -B
 
