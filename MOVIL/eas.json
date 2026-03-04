@@ -21,7 +21,11 @@
         "image": "latest"
       }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://senda-vida.onrender.com/api"
+      }
+    }
   }
 }
 

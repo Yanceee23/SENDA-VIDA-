@@ -1,3 +1,7 @@
+databases:
+  - name: senda-vida-db
+    databaseName: senda_vida
+
 services:
   - type: web
     name: senda-vida
@@ -7,3 +11,9 @@ services:
     envVars:
       - key: PORT
         value: 8084
+      - key: DATABASE_URL
+        fromDatabase:
+          name: senda-vida-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true

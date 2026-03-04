@@ -55,6 +55,7 @@ com\sendavida\models\Estadistica.class
 com\sendavida\services\GeoService.class
 com\sendavida\models\Clima$ClimaBuilder.class
 com\sendavida\models\Comunidad.class
+com\sendavida\config\DataSourceConfig.class
 com\sendavida\models\Alimentacion$AlimentacionBuilder.class
 com\sendavida\repository\HidratacionRepository.class
 com\sendavida\services\PoisService.class

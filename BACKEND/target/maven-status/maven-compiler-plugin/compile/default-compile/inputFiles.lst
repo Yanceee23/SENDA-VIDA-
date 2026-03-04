@@ -65,6 +65,7 @@ C:\APPS\BACKEND\src\main\java\com\sendavida\controllers\ApiExceptionHandler.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\repository\AlimentacionRepository.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\services\EmergenciaService.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\services\RutaService.java
+C:\APPS\BACKEND\src\main\java\com\sendavida\config\DataSourceConfig.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\controllers\AlimentacionController.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\models\Estadistica.java
 C:\APPS\BACKEND\src\main\java\com\sendavida\services\AlimentacionService.java
