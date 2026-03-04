@@ -1,13 +1,13 @@
-# Build stage
+# Build stage - usa rutas BACKEND/ para contexto = repo root
 FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 
-COPY pom.xml .
-COPY .mvn .mvn
-COPY mvnw .
+COPY BACKEND/pom.xml .
+COPY BACKEND/.mvn .mvn
+COPY BACKEND/mvnw .
 RUN chmod +x mvnw && ./mvnw dependency:go-offline -B
 
-COPY src .
+COPY BACKEND/src .
 
 RUN ./mvnw package -DskipTests -B
 
