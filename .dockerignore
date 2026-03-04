@@ -1,0 +1,17 @@
+# Solo incluir lo necesario para el build del backend
+.git
+.gitignore
+*.md
+.env
+.env*
+
+# Excluir app móvil
+MOVIL
+
+# Excluir node (si hay en raíz)
+node_modules
+
+# Backend: excluir target y uploads
+BACKEND/target
+BACKEND/uploads
+**/firebase-service-account*
