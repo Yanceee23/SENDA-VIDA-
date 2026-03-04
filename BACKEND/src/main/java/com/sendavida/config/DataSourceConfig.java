@@ -2,9 +2,12 @@ package com.sendavida.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.boot.autoconfigure.AutoConfigureBefore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
@@ -17,9 +20,11 @@ import java.nio.charset.StandardCharsets;
  * cuando está presente. En desarrollo local, Spring Boot usa application.properties.
  */
 @Configuration
+@AutoConfigureBefore(DataSourceAutoConfiguration.class)
 public class DataSourceConfig {
 
     @Bean
+    @Primary
     @ConditionalOnProperty(name = "DATABASE_URL")
     public DataSource dataSource(Environment env) throws Exception {
         String databaseUrl = env.getProperty("DATABASE_URL");
