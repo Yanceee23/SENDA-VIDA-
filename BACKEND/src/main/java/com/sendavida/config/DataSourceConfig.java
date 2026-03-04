@@ -2,7 +2,7 @@ package com.sendavida.config;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
@@ -20,13 +20,17 @@ import java.nio.charset.StandardCharsets;
 public class DataSourceConfig {
 
     @Bean
-    @ConditionalOnExpression("T(java.lang.System).getenv('DATABASE_URL') != null && !T(java.lang.System).getenv('DATABASE_URL').isEmpty()")
+    @ConditionalOnProperty(name = "DATABASE_URL")
     public DataSource dataSource(Environment env) throws Exception {
         String databaseUrl = env.getProperty("DATABASE_URL");
         if (databaseUrl == null || databaseUrl.isBlank()) {
             return null;
         }
 
+        // Normalizar esquema postgres -> postgresql para URI
+        if (databaseUrl.startsWith("postgres://")) {
+            databaseUrl = "postgresql://" + databaseUrl.substring(11);
+        }
         URI dbUri = new URI(databaseUrl);
         String userInfo = dbUri.getUserInfo();
         String username;
@@ -40,7 +44,8 @@ public class DataSourceConfig {
             password = "";
         }
 
-        String jdbcUrl = "jdbc:postgresql://" + dbUri.getHost() + ":" + dbUri.getPort() + dbUri.getPath();
+        int port = dbUri.getPort() > 0 ? dbUri.getPort() : 5432;
+        String jdbcUrl = "jdbc:postgresql://" + dbUri.getHost() + ":" + port + dbUri.getPath();
         if (dbUri.getQuery() != null && !dbUri.getQuery().isEmpty()) {
             jdbcUrl += "?" + dbUri.getQuery();
         }
