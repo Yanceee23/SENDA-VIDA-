@@ -49,6 +49,7 @@ type RouteAdviceInput = {
   clima: string;
   temperatura: number | null;
   hora: number;
+  actividad?: 'caminata' | 'bici' | string;
 };
 
 export type LivingThingIdentification = {
@@ -197,41 +198,11 @@ async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Pro
 }
 
 export async function requestRouteAdvice(input: RouteAdviceInput): Promise<string> {
-  const temp = input.temperatura == null ? 'sin dato' : `${Math.round(input.temperatura)}°C`;
-  const horario =
-    input.hora >= 5 && input.hora <= 10 ? 'mañana' : input.hora >= 11 && input.hora <= 16 ? 'mediodía/tarde' : 'noche/madrugada';
-  const riesgoCalor =
-    input.temperatura == null
-      ? 'desconocido'
-      : input.temperatura >= 36
-        ? 'extremo'
-        : input.temperatura >= 32
-          ? 'alto'
-          : input.temperatura >= 28
-            ? 'moderado'
-            : 'bajo';
-  const prompt = [
-    'Eres un entrenador y guía de rutas urbanas y naturales.',
-    'Con base en los datos del usuario, recomienda UNA ruta y ritmo seguro.',
-    'Contexto actual:',
-    `- clima: ${input.clima}`,
-    `- temperatura: ${temp}`,
-    `- franja horaria: ${horario}`,
-    `- km hoy: ${input.kmHoy.toFixed(2)}`,
-    `- calorías hoy: ${Math.round(input.caloriasHoy)}`,
-    `- rutas este mes: ${Math.round(input.rutasMes)}`,
-    `- km este mes: ${input.kmMes.toFixed(2)}`,
-    `- riesgo de calor estimado: ${riesgoCalor}`,
-    '',
-    'Responde SOLO en 5 líneas, en español y directo:',
-    '1) Tiempo recomendado: <minutos sugeridos>',
-    '2) Ruta recomendada: <tipo de ruta y distancia>',
-    '3) Intensidad: <baja/media/alta + por qué>',
-    '4) Riesgo climático: <riesgo actual y precaución>',
-    '5) Acción sugerida: <continuar / acortar / pausar e hidratar>',
-  ].join('\n');
+  const actividad = input.actividad ?? 'actividad';
+  const tiempoMin = Math.round((input.kmHoy * 15) || 0);
+  const prompt = `Eres coach deportivo. Usuario: ${input.kmHoy.toFixed(1)}km, ${Math.round(input.caloriasHoy)}cal, ${tiempoMin}min de ${actividad}. Da 2 consejos cortos en español.`;
 
-  const fallbackMessage = 'Servicio temporalmente no disponible, intenta más tarde.';
+  const fallbackMessage = 'No pude conectarme. Verifica tu internet e intenta de nuevo.';
   const result = await callGemini(
     {
       contents: [{ parts: [{ text: prompt }] }],
@@ -285,18 +256,21 @@ function normalizeIdentification(raw: unknown, rawText: string): LivingThingIden
         .filter(Boolean)
         .slice(0, 5)
     : [];
+  const nombreComun = safeString(data.nombre ?? data.nombreComun, 'Sin identificar');
+  const tipoStr = safeString(data.tipo ?? data.categoria ?? data.tipoEspecifico, '');
+  const categoria = normalizeCategoria(data.categoria ?? data.tipo ?? tipoStr || null);
   return {
-    categoria: normalizeCategoria(data.categoria),
-    nombreComun: safeString(data.nombreComun, 'Sin identificar'),
-    tipoEspecifico: safeString(data.tipoEspecifico, 'No disponible'),
+    categoria,
+    nombreComun,
+    tipoEspecifico: safeString(data.tipoEspecifico ?? data.tipo ?? data.descripcion, 'No disponible'),
     nombreCientifico: safeString(data.nombreCientifico, 'No disponible'),
     distribucion: safeString(data.distribucion, 'No disponible'),
     habitat: safeString(data.habitat, 'No disponible'),
     peligrosidad: safeString(data.peligrosidad, 'No disponible'),
     confianza: Math.max(0, Math.min(100, safeNumber(data.confianza, 40))),
     posiblesCoincidencias: posibles,
-    fuenteSugerida: safeString(data.fuenteSugerida, 'GBIF / Catálogo taxonómico local'),
-    recomendacionUsuario: safeString(data.recomendacionUsuario, 'Observa sin manipular y valida la especie con una fuente confiable.'),
+    fuenteSugerida: safeString(data.fuenteSugerida, 'GBIF / iNaturalist'),
+    recomendacionUsuario: safeString(data.recomendacionUsuario ?? data.datoCurioso, 'Observa sin manipular.'),
     rawText,
   };
 }
@@ -328,26 +302,8 @@ export async function identifyLivingThingFromImage(params: {
   base64: string;
   mimeType: string;
 }): Promise<LivingThingIdentification> {
-  const prompt = [
-    'Analiza la imagen e identifica si es animal o planta.',
-    'Debes responder SOLO en JSON válido, sin texto adicional.',
-    'Campos obligatorios:',
-    '{',
-    '  "categoria": "animal|planta|desconocido",',
-    '  "nombreComun": "texto",',
-    '  "tipoEspecifico": "raza o especie probable",',
-    '  "nombreCientifico": "texto",',
-    '  "distribucion": "dónde se encuentra (países/región/continente)",',
-    '  "habitat": "hábitat típico",',
-    '  "peligrosidad": "ninguna|baja|media|alta + breve motivo",',
-    '  "confianza": 0-100,',
-    '  "posiblesCoincidencias": ["opción1","opción2"],',
-    '  "fuenteSugerida": "GBIF, iNaturalist u otra base confiable",',
-    '  "recomendacionUsuario": "acción breve y segura para el usuario"',
-    '}',
-    'Si no estás seguro, marca "desconocido" y baja confianza.',
-    'Responde en español.',
-  ].join('\n');
+  const prompt =
+    'Identifica este ser vivo en español. Responde SOLO con JSON: {nombre, nombreCientifico, tipo, descripcion, habitat, datoCurioso}';
 
   const response = await callGemini(
     {
@@ -365,7 +321,7 @@ export async function identifyLivingThingFromImage(params: {
         },
       ],
     },
-    'No se pudo identificar.'
+    'No pude identificar. Verifica tu conexión e intenta de nuevo.'
   );
 
   const jsonCandidate = extractJsonCandidate(response);

@@ -93,9 +93,11 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
   });
 
   const calorias = useMemo(() => {
-    const factor = tipo === 'ciclismo' ? 30 : 60;
-    return distKm * factor;
-  }, [distKm, tipo]);
+    const MET = tipo === 'ciclismo' ? 8.0 : 3.5;
+    const pesoKg = user?.peso != null && user.peso > 0 ? Number(user.peso) : 70;
+    const horas = elapsedSec / 3600;
+    return Math.round(MET * pesoKg * horas);
+  }, [elapsedSec, tipo, user?.peso]);
 
   const region = useMemo(() => {
     if (!current) return undefined;
@@ -126,6 +128,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         clima: climaCondicion,
         temperatura,
         hora: new Date().getHours(),
+        actividad: tipo === 'ciclismo' ? 'bici' : 'caminata',
       });
       setRouteAdvice(recommendation);
     } catch (e: any) {

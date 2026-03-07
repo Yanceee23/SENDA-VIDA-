@@ -201,6 +201,7 @@ export function DashboardScreen() {
         clima: clima?.condicion ?? 'Sin datos',
         temperatura: clima ? Math.round(clima.temperaturaC) : null,
         hora: stats.hora,
+        actividad: 'actividad',
       });
       setAssistantResponse(advice);
     } catch (error: unknown) {
@@ -414,21 +415,16 @@ export function DashboardScreen() {
                   <Text style={styles.identifyName}>{assistantIdentification?.nombreComun ?? 'Sin identificar'}</Text>
                   <Text style={styles.identifyScientific}>{assistantIdentification?.nombreCientifico ?? 'No disponible'}</Text>
                   <Text style={styles.identifyMeta}>Tipo: {assistantIdentification?.categoria ?? 'desconocido'}</Text>
-                  <Text style={styles.identifyMeta}>Raza/Especie: {assistantIdentification?.tipoEspecifico ?? 'No disponible'}</Text>
-                  <Text style={styles.identifyMeta}>Distribución: {assistantIdentification?.distribucion ?? 'No disponible'}</Text>
-                  <Text style={styles.identifyMeta}>Hábitat: {assistantIdentification?.habitat ?? 'No disponible'}</Text>
-                  <Text style={styles.identifyMeta}>Peligrosidad: {assistantIdentification?.peligrosidad ?? 'No disponible'}</Text>
-                  <Text style={styles.identifyMeta}>Confianza: {Math.round(Number(assistantIdentification?.confianza ?? 0))}%</Text>
-                  <View style={styles.funFactCard}>
-                    <Text style={styles.funFactTitle}>🧭 Recomendación</Text>
-                    <Text style={styles.funFactText}>{assistantIdentification?.recomendacionUsuario ?? 'Sin recomendación disponible.'}</Text>
-                  </View>
-                  {assistantIdentification?.posiblesCoincidencias?.length ? (
-                    <Text style={styles.identifyRaw}>
-                      Posibles coincidencias: {assistantIdentification.posiblesCoincidencias.join(', ')}
-                    </Text>
+                  {assistantIdentification?.tipoEspecifico ? (
+                    <Text style={styles.identifyMeta}>Descripción: {assistantIdentification.tipoEspecifico}</Text>
                   ) : null}
-                  <Text style={styles.identifyRaw}>{assistantResponse || 'No se pudo identificar.'}</Text>
+                  <Text style={styles.identifyMeta}>Hábitat: {assistantIdentification?.habitat ?? 'No disponible'}</Text>
+                  {assistantIdentification?.recomendacionUsuario ? (
+                    <View style={styles.funFactCard}>
+                      <Text style={styles.funFactTitle}>💡 Dato curioso</Text>
+                      <Text style={styles.funFactText}>{assistantIdentification.recomendacionUsuario}</Text>
+                    </View>
+                  ) : null}
                 </ScrollView>
                 <Pressable onPress={handleCloseAssistant} style={styles.closeLink} accessibilityRole="button">
                   <Text style={styles.closeText}>Cerrar</Text>

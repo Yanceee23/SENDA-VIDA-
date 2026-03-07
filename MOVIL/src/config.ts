@@ -33,7 +33,7 @@ export const INSTAGRAM_PROFILE_URL = 'https://www.instagram.com/cicla28_?igsh=MW
 // 🔑 Lee desde .env (EXPO_PUBLIC_GEMINI_API_KEY). Consíguela gratis en: https://aistudio.google.com
 export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-export const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'] as const;
+export const GEMINI_MODELS = ['gemini-1.5-flash'] as const;
 
 export const STORAGE_KEYS = {
   auth: 'SV_AUTH_V1',

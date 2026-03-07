@@ -13,6 +13,7 @@ import { fontFamily } from '../theme/typography';
 import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import * as Location from 'expo-location';
+import { STORAGE_KEYS } from '../config';
 import { requestRouteAdvice } from '../services/geminiService';
 import { obtenerClimaActual } from '../services/climaService';
 import { getTodayAndMonthStats } from '../services/statsService';
@@ -70,6 +71,7 @@ export function RouteFinishedScreen({ navigation, route }: Props) {
         clima: clima?.condicion ?? 'Sin datos',
         temperatura: clima ? Number(clima.temperaturaC) : null,
         hora: new Date().getHours(),
+        actividad: summary?.tipo === 'ciclismo' ? 'bici' : 'caminata',
       });
       setPostAdvice(advice);
     } catch (e: any) {
