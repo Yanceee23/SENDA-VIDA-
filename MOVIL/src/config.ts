@@ -29,11 +29,21 @@ export function normalizeApiBaseUrl(raw: string): string {
   }
 }
 
-export const INSTAGRAM_PROFILE_URL = 'https://www.instagram.com/cicla28_?igsh=MWl0cWxhY2JkdXpscw==';
 // 🔑 Lee desde .env (EXPO_PUBLIC_GEMINI_API_KEY). Consíguela gratis en: https://aistudio.google.com
 export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-export const GEMINI_MODELS = ['gemini-1.5-flash'] as const;
+export const GEMINI_MODELS = ['gemini-2.0-flash'] as const;
+
+/** Firebase Realtime Database para chat comunitario. Configura en .env */
+export const FIREBASE_CONFIG = {
+  apiKey: String(process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '').trim(),
+  authDomain: String(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '').trim(),
+  databaseURL: String(process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL ?? '').trim(),
+  projectId: String(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ?? '').trim(),
+  storageBucket: String(process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET ?? '').trim(),
+  messagingSenderId: String(process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ?? '').trim(),
+  appId: String(process.env.EXPO_PUBLIC_FIREBASE_APP_ID ?? '').trim(),
+};
 
 export const STORAGE_KEYS = {
   auth: 'SV_AUTH_V1',

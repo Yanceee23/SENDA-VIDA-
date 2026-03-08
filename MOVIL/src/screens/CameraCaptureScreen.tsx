@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Alert, Image, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -10,7 +10,6 @@ import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
 import { useAuth } from '../state/AuthContext';
 import { useSettings } from '../state/SettingsContext';
-import { identifyLivingThingFromImage, type LivingThingIdentification } from '../services/geminiService';
 
 type RouteParams = {
   lat?: number;
@@ -34,9 +33,6 @@ export function CameraCaptureScreen() {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [scanText, setScanText] = useState<string>('');
   const [scanUrl, setScanUrl] = useState<string | null>(null);
-  const [identified, setIdentified] = useState<LivingThingIdentification | null>(null);
-  const [identifiedImageUri, setIdentifiedImageUri] = useState<string | null>(null);
-  const [identifyModalVisible, setIdentifyModalVisible] = useState(false);
 
   const lat = useMemo(() => Number(params.lat ?? 0), [params.lat]);
   const lng = useMemo(() => Number(params.lng ?? 0), [params.lng]);
@@ -124,18 +120,7 @@ export function CameraCaptureScreen() {
       if (!uri) throw new Error('No se pudo obtener la foto');
 
       await subir(uri);
-      try {
-        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-        const result = await identifyLivingThingFromImage({
-          base64,
-          mimeType: 'image/jpeg',
-        });
-        setIdentified(result);
-        setIdentifiedImageUri(uri);
-        setIdentifyModalVisible(true);
-      } catch (e: any) {
-        Alert.alert('Identificación', e?.message ?? 'No pude identificar. Verifica tu conexión.');
-      }
+      navigation.goBack();
     } catch (e: any) {
       Alert.alert('Cámara', e?.message ?? 'No se pudo tomar/subir la foto');
     } finally {
@@ -283,48 +268,6 @@ export function CameraCaptureScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={identifyModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setIdentifyModalVisible(false);
-          setIdentifiedImageUri(null);
-          navigation.goBack();
-        }}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>🔍 Resultado de identificación</Text>
-            {identifiedImageUri ? (
-              <Image source={{ uri: identifiedImageUri }} style={styles.identifyImage} />
-            ) : null}
-            <Text style={styles.identifyName}>{identified?.nombreComun ?? 'Sin identificar'}</Text>
-            <Text style={styles.identifyScientific}>{identified?.nombreCientifico ?? 'No disponible'}</Text>
-            <Text style={styles.modalText}>Tipo: {identified?.categoria ?? 'desconocido'}</Text>
-            {identified?.tipoEspecifico ? (
-              <Text style={styles.modalText}>Descripción: {identified.tipoEspecifico}</Text>
-            ) : null}
-            <Text style={styles.modalText}>Hábitat: {identified?.habitat ?? 'No disponible'}</Text>
-            {identified?.recomendacionUsuario ? (
-              <Text style={styles.modalText}>💡 Dato curioso: {identified.recomendacionUsuario}</Text>
-            ) : null}
-            <View style={styles.modalBtns}>
-              <Pressable
-                onPress={() => {
-                  setIdentifyModalVisible(false);
-                  navigation.goBack();
-                }}
-                style={styles.modalBtn}
-                accessibilityRole="button"
-              >
-                <Text style={styles.modalBtnText}>Aceptar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       <View style={styles.topBar}>
         <Pressable onPress={() => navigation.goBack()} style={styles.topBtn} accessibilityRole="button">
           <Text style={styles.topBtnText}>✕</Text>
@@ -405,8 +348,5 @@ const styles = StyleSheet.create({
   modalFooter: { flexDirection: 'row', justifyContent: 'space-between' },
   modalLinkBtn: { paddingVertical: 10, paddingHorizontal: 10 },
   modalLinkText: { color: colors.muted, fontWeight: '900', fontFamily },
-  identifyImage: { width: 150, height: 150, borderRadius: 16, alignSelf: 'center' },
-  identifyName: { color: colors.text, fontWeight: '900', fontFamily, fontSize: 18, textAlign: 'center' },
-  identifyScientific: { color: colors.muted, fontStyle: 'italic', fontWeight: '600', fontFamily, textAlign: 'center' },
 });
 

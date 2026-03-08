@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/Screen';
 import { apiRequest } from '../services/api';
@@ -13,10 +12,6 @@ import { fontFamily } from '../theme/typography';
 import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import * as Location from 'expo-location';
-import { STORAGE_KEYS } from '../config';
-import { requestRouteAdvice } from '../services/geminiService';
-import { obtenerClimaActual } from '../services/climaService';
-import { getTodayAndMonthStats } from '../services/statsService';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'RouteFinished'>;
 
@@ -30,13 +25,10 @@ type ResumenBackend = {
 export function RouteFinishedScreen({ navigation, route }: Props) {
   const { settings } = useSettings();
   const { user } = useAuth();
-  const { summary, actividadId, autoOpenEnvironment, routeAdvice, nivelActual, floraTotal, faunaTotal, floraNombres, faunaNombres } = route.params;
+  const { summary, actividadId, autoOpenEnvironment, nivelActual, floraTotal, faunaTotal, floraNombres, faunaNombres } = route.params;
   const [backend, setBackend] = useState<ResumenBackend | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [autoOpened, setAutoOpened] = useState(false);
-  const [postAdvice, setPostAdvice] = useState(routeAdvice ?? '');
-  const [postAdviceLoading, setPostAdviceLoading] = useState(false);
-  const [postAdviceFromStorage, setPostAdviceFromStorage] = useState(false);
 
   const fetchResumen = async () => {
     if (!actividadId) return;
@@ -54,51 +46,6 @@ export function RouteFinishedScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (actividadId) void fetchResumen();
   }, [actividadId, settings.apiBaseUrl]);
-
-  const loadPostRouteAdvice = async () => {
-    try {
-      setPostAdviceLoading(true);
-      setPostAdviceFromStorage(false);
-      const [clima, stats] = await Promise.all([
-        obtenerClimaActual(settings.apiBaseUrl).catch(() => null),
-        getTodayAndMonthStats(),
-      ]);
-      const advice = await requestRouteAdvice({
-        kmHoy: Number(stats.dia.km ?? summary.distanciaKm),
-        caloriasHoy: Number(stats.dia.calorias ?? summary.calorias),
-        kmMes: Number(stats.mes.km ?? summary.distanciaKm),
-        rutasMes: Number(stats.mes.rutas ?? 1),
-        clima: clima?.condicion ?? 'Sin datos',
-        temperatura: clima ? Number(clima.temperaturaC) : null,
-        hora: new Date().getHours(),
-        actividad: summary?.tipo === 'ciclismo' ? 'bici' : 'caminata',
-      });
-      setPostAdvice(advice);
-    } catch (e: any) {
-      setPostAdvice(e?.message ?? 'No se pudo cargar recomendación post-ruta.');
-      setPostAdviceFromStorage(false);
-    } finally {
-      setPostAdviceLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!routeAdvice) {
-      (async () => {
-        try {
-          const saved = await AsyncStorage.getItem(STORAGE_KEYS.lastRouteAdvice);
-          if (saved?.trim()) {
-            setPostAdvice(saved);
-            setPostAdviceFromStorage(true);
-          }
-        } catch {
-          // Ignorar
-        }
-      })();
-    } else {
-      setPostAdviceFromStorage(false);
-    }
-  }, [routeAdvice]);
 
   useEffect(() => {
     if (!autoOpenEnvironment) return;
@@ -194,20 +141,6 @@ export function RouteFinishedScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      <Card style={styles.postAdviceCard}>
-        <Text style={styles.postAdviceTitle}>Recomendación final</Text>
-        <Text style={styles.postAdviceText}>
-          {postAdviceLoading
-            ? 'Analizando clima y esfuerzo para recomendar...'
-            : postAdviceFromStorage && postAdvice
-              ? `Último consejo disponible:\n\n${postAdvice}`
-              : postAdvice || 'Toca "Actualizar recomendación" para obtener un consejo.'}
-        </Text>
-        <Pressable onPress={() => void loadPostRouteAdvice()} style={styles.retryBtn} accessibilityRole="button">
-          <Text style={styles.retryText}>Actualizar recomendación</Text>
-        </Pressable>
-      </Card>
-
       <View style={{ flex: 1 }} />
 
       <LargeButton
@@ -266,9 +199,6 @@ const styles = StyleSheet.create({
   envLabel: { color: colors.muted, fontWeight: '800', fontSize: 12, fontFamily },
   envCount: { color: colors.text, fontWeight: '900', fontFamily },
   envNames: { color: colors.muted, fontWeight: '700', fontSize: 11, fontFamily },
-  postAdviceCard: { marginTop: 12, gap: 8 },
-  postAdviceTitle: { color: colors.text, fontWeight: '900', fontFamily },
-  postAdviceText: { color: colors.muted, fontWeight: '700', fontFamily, lineHeight: 20 },
   errorBanner: {
     marginTop: 12,
     padding: 12,

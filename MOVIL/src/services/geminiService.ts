@@ -1,3 +1,9 @@
+/**
+ * SERVICIO GEMINI - REGLA ABSOLUTA DE USO:
+ * Solo llamar cuando el usuario toque explícitamente el botón del robot.
+ * NUNCA en useEffect, NUNCA al cargar pantalla, NUNCA automáticamente.
+ * Un toque = una llamada = un token.
+ */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GEMINI_API_BASE_URL, GEMINI_API_KEY, GEMINI_MODELS, STORAGE_KEYS } from '../config';
 
@@ -50,10 +56,13 @@ type RouteAdviceInput = {
   temperatura: number | null;
   hora: number;
   actividad?: 'caminata' | 'bici' | string;
+  destino?: string;
+  tiempoSegundos?: number;
+  nombreUsuario?: string;
 };
 
 export type LivingThingIdentification = {
-  categoria: 'animal' | 'planta' | 'desconocido';
+  categoria: 'animal' | 'planta' | 'hongo' | 'insecto' | 'desconocido';
   nombreComun: string;
   tipoEspecifico: string;
   nombreCientifico: string;
@@ -145,62 +154,44 @@ async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<R
   }
 }
 
+/** Una sola llamada a la API por acción del usuario (un token por toque del robot). */
 async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Promise<string> {
-  for (const model of GEMINI_MODELS) {
-    for (let retry = 0; retry <= 1; retry++) {
-      try {
-        const res = await callGeminiOnce(model, body);
-        const parsed = await parseJsonSafe(res);
+  const model = GEMINI_MODELS[0];
+  try {
+    const res = await callGeminiOnce(model, body);
+    const parsed = await parseJsonSafe(res);
 
-        if (!res.ok) {
-          const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
-          const errMessage =
-            maybeObj?.error?.message ??
-            (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
+    if (!res.ok) {
+      const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
+      const errMessage =
+        maybeObj?.error?.message ??
+        (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
 
-          console.error('[Gemini] HTTP error', { model, status: res.status, parsed, requestBody: body });
-
-          if (isConfigError(res.status, errMessage)) {
-            throw new Error(CONFIG_ERROR_MESSAGE);
-          }
-          if (isNetworkError(res.status, errMessage)) {
-            throw new Error(NETWORK_ERROR_MESSAGE);
-          }
-          if (isModelNotFound(res.status, errMessage)) {
-            break;
-          }
-          if (isRateLimitError(res.status)) {
-            throw new Error('Asistente ocupado, intenta en unos minutos 🤖');
-          }
-          throw new Error(fallbackMessage);
-        }
-
-        const text = extractText(parsed);
-        return text ?? fallbackMessage;
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error ?? '');
-        console.error('[Gemini] Exception in callGemini', { model, error, requestBody: body });
-
-        if (message === CONFIG_ERROR_MESSAGE) throw error;
-        if (message === RATE_LIMIT_MESSAGE) throw error;
-        if (isNetworkError(0, message)) {
-          throw new Error(NETWORK_ERROR_MESSAGE);
-        }
-        if (message === fallbackMessage) {
-          throw error;
-        }
-        break;
-      }
+      if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
+      if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
+      if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
+      throw new Error(fallbackMessage);
     }
-  }
 
-  throw new Error(fallbackMessage);
+    const text = extractText(parsed);
+    return text ?? fallbackMessage;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    if (message === CONFIG_ERROR_MESSAGE) throw error;
+    if (message === RATE_LIMIT_MESSAGE) throw error;
+    if (message === fallbackMessage) throw error;
+    if (isNetworkError(0, message)) throw new Error(NETWORK_ERROR_MESSAGE);
+    throw new Error(fallbackMessage);
+  }
 }
 
 export async function requestRouteAdvice(input: RouteAdviceInput): Promise<string> {
   const actividad = input.actividad ?? 'actividad';
-  const tiempoMin = Math.round((input.kmHoy * 15) || 0);
-  const prompt = `Eres coach deportivo. Usuario: ${input.kmHoy.toFixed(1)}km, ${Math.round(input.caloriasHoy)}cal, ${tiempoMin}min de ${actividad}. Da 2 consejos cortos en español.`;
+  const tiempoMin = input.tiempoSegundos != null ? Math.round(input.tiempoSegundos / 60) : Math.round((input.kmHoy * 15) || 0);
+  const destoTxt = input.destino ? ` Destino: ${input.destino}.` : '';
+  const nombreTxt = input.nombreUsuario ? ` Para ${input.nombreUsuario}.` : '';
+  const prompt = `Eres coach deportivo.${nombreTxt} Responde en formato: "Hoy corriste/hiciste X km, quemaste X calorías, con clima X (temperatura). Te recomiendo: [2-3 consejos breves en español]."
+Datos: ${input.kmHoy.toFixed(1)} km hoy, ${Math.round(input.caloriasHoy)} cal, ${input.kmMes} km este mes, ${input.rutasMes} rutas, ${tiempoMin} min de ${actividad}. Clima: ${input.clima}${input.temperatura != null ? ` ${input.temperatura}°C` : ''}.${destoTxt}`;
 
   const fallbackMessage = 'No pude conectarme. Verifica tu internet e intenta de nuevo.';
   const result = await callGemini(
@@ -243,7 +234,7 @@ function extractJsonCandidate(text: string): string | null {
 
 function normalizeCategoria(raw: unknown): LivingThingIdentification['categoria'] {
   const value = safeString(raw, '').toLowerCase();
-  if (value === 'animal' || value === 'planta') return value;
+  if (value === 'animal' || value === 'planta' || value === 'hongo' || value === 'insecto') return value;
   return 'desconocido';
 }
 
@@ -258,7 +249,7 @@ function normalizeIdentification(raw: unknown, rawText: string): LivingThingIden
     : [];
   const nombreComun = safeString(data.nombre ?? data.nombreComun, 'Sin identificar');
   const tipoStr = safeString(data.tipo ?? data.categoria ?? data.tipoEspecifico, '');
-  const categoria = normalizeCategoria(data.categoria ?? data.tipo ?? tipoStr || null);
+  const categoria = normalizeCategoria((data.categoria ?? data.tipo ?? tipoStr) || null);
   return {
     categoria,
     nombreComun,
@@ -281,7 +272,11 @@ function fallbackIdentificationFromText(rawText: string): LivingThingIdentificat
     ? 'planta'
     : lower.includes('animal')
       ? 'animal'
-      : 'desconocido';
+      : lower.includes('hongo')
+        ? 'hongo'
+        : lower.includes('insecto')
+          ? 'insecto'
+          : 'desconocido';
   return {
     categoria,
     nombreComun: 'Sin identificar',
@@ -303,7 +298,7 @@ export async function identifyLivingThingFromImage(params: {
   mimeType: string;
 }): Promise<LivingThingIdentification> {
   const prompt =
-    'Identifica este ser vivo en español. Responde SOLO con JSON: {nombre, nombreCientifico, tipo, descripcion, habitat, datoCurioso}';
+    'Identifica este ser vivo en español. Responde SOLO con JSON: {nombre (nombre común), nombreCientifico, tipo: "planta"|"animal"|"hongo"|"insecto", descripcion (breve y clara), datoCurioso}. Incluye siempre nombre común, nombre científico, tipo, descripción y un dato curioso.';
 
   const response = await callGemini(
     {

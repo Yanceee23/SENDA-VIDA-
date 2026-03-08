@@ -30,7 +30,7 @@ import { obtenerClimaActual, type ClimaActual } from '../../services/climaServic
 import { RequireAccountModal } from '../../components/RequireAccountModal';
 import { identifyLivingThingFromImage, requestRouteAdvice, type LivingThingIdentification } from '../../services/geminiService';
 
-type AssistantStep = 'menu' | 'routeResult' | 'identifySource' | 'identifyResult';
+type AssistantStep = 'menu' | 'routeResult' | 'identifySource' | 'identifyPreview' | 'identifyResult';
 
 type DayStats = {
   km: number;
@@ -127,6 +127,7 @@ export function DashboardScreen() {
   const [assistantResponse, setAssistantResponse] = useState('');
   const [assistantIdentification, setAssistantIdentification] = useState<LivingThingIdentification | null>(null);
   const [assistantImageUri, setAssistantImageUri] = useState<string | null>(null);
+  const [pendingImageBase64, setPendingImageBase64] = useState<{ base64: string; mimeType: string } | null>(null);
   const routeAdviceBlocks = useMemo(() => parseRouteAdviceBlocks(assistantResponse), [assistantResponse]);
 
   const goStart = (tipo: 'ciclismo' | 'senderismo') => {
@@ -155,6 +156,7 @@ export function DashboardScreen() {
     setAssistantResponse('');
     setAssistantIdentification(null);
     setAssistantImageUri(null);
+    setPendingImageBase64(null);
   };
 
   const handleCloseAssistant = () => {
@@ -164,6 +166,7 @@ export function DashboardScreen() {
     setAssistantResponse('');
     setAssistantIdentification(null);
     setAssistantImageUri(null);
+    setPendingImageBase64(null);
   };
 
   const getAssistantStats = async () => {
@@ -202,6 +205,7 @@ export function DashboardScreen() {
         temperatura: clima ? Math.round(clima.temperaturaC) : null,
         hora: stats.hora,
         actividad: 'actividad',
+        nombreUsuario: user?.nombre,
       });
       setAssistantResponse(advice);
     } catch (error: unknown) {
@@ -213,12 +217,7 @@ export function DashboardScreen() {
     }
   };
 
-  const handleIdentifySource = async (source: 'camera' | 'gallery') => {
-    setAssistantStep('identifyResult');
-    setAssistantResponse('');
-    setAssistantIdentification(null);
-    setAssistantLoading(true);
-
+  const handlePickImage = async (source: 'camera' | 'gallery') => {
     try {
       if (source === 'camera') {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -244,7 +243,6 @@ export function DashboardScreen() {
             });
 
       if (pickerResult.canceled || !pickerResult.assets?.length) {
-        setAssistantStep('identifySource');
         return;
       }
 
@@ -254,15 +252,30 @@ export function DashboardScreen() {
       const base64 = await FileSystem.readAsStringAsync(asset.uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      setPendingImageBase64({ base64, mimeType: asset.mimeType ?? 'image/jpeg' });
+      setAssistantStep('identifyPreview');
+    } catch (error: unknown) {
+      console.error('[Assistant] Error al seleccionar imagen', { error, source });
+      Alert.alert('Error', error instanceof Error ? error.message : 'No se pudo obtener la imagen.');
+    }
+  };
 
+  const handleAnalizar = async () => {
+    if (!pendingImageBase64) return;
+    setAssistantStep('identifyResult');
+    setAssistantResponse('');
+    setAssistantIdentification(null);
+    setAssistantLoading(true);
+    try {
       const response = await identifyLivingThingFromImage({
-        base64,
-        mimeType: asset.mimeType ?? 'image/jpeg',
+        base64: pendingImageBase64.base64,
+        mimeType: pendingImageBase64.mimeType,
       });
       setAssistantIdentification(response);
       setAssistantResponse(response.rawText);
+      setPendingImageBase64(null);
     } catch (error: unknown) {
-      console.error('[Assistant] Error en identificación de imagen', { error, source });
+      console.error('[Assistant] Error en identificación', { error });
       const message = error instanceof Error ? error.message : 'No se pudo identificar.';
       setAssistantResponse(message);
     } finally {
@@ -373,8 +386,23 @@ export function DashboardScreen() {
                 <Text style={styles.assistantTitle}>🤖 Soy SENDA, tu asistente</Text>
                 <Text style={styles.assistantSubtitle}>Elige una opción para identificar</Text>
                 <View style={styles.assistantButtons}>
-                  <LargeButton title="📷 Tomar foto" onPress={() => void handleIdentifySource('camera')} variant="primary" />
-                  <LargeButton title="🖼️ Galería" onPress={() => void handleIdentifySource('gallery')} variant="outlinePrimary" />
+                  <LargeButton title="📷 Tomar foto" onPress={() => void handlePickImage('camera')} variant="primary" />
+                  <LargeButton title="🖼️ Galería" onPress={() => void handlePickImage('gallery')} variant="outlinePrimary" />
+                </View>
+                <Pressable onPress={handleCloseAssistant} style={styles.closeLink} accessibilityRole="button">
+                  <Text style={styles.closeText}>Cerrar</Text>
+                </Pressable>
+              </>
+            ) : null}
+
+            {!assistantLoading && assistantStep === 'identifyPreview' ? (
+              <>
+                <Text style={styles.assistantTitle}>🔍 Vista previa</Text>
+                <Text style={styles.assistantSubtitle}>Toca Analizar para identificar la planta o animal</Text>
+                {assistantImageUri ? <Image source={{ uri: assistantImageUri }} style={styles.previewImage} /> : null}
+                <View style={styles.assistantButtons}>
+                  <LargeButton title="🔬 Analizar" onPress={() => void handleAnalizar()} variant="primary" />
+                  <LargeButton title="Elegir otra foto" onPress={() => { setAssistantImageUri(null); setPendingImageBase64(null); setAssistantStep('identifySource'); }} variant="outlinePrimary" />
                 </View>
                 <Pressable onPress={handleCloseAssistant} style={styles.closeLink} accessibilityRole="button">
                   <Text style={styles.closeText}>Cerrar</Text>

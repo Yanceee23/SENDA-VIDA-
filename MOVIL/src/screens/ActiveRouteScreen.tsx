@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Contacts from 'expo-contacts';
 import * as Linking from 'expo-linking';
 import * as Location from 'expo-location';
@@ -14,7 +13,6 @@ import { addTodayStats, syncStatsToBackend } from '../services/statsService';
 import { detectExtremeWeather } from '../services/weatherAlertsService';
 import { apiRequest, toQuery } from '../services/api';
 import { requestRouteAdvice } from '../services/geminiService';
-import { STORAGE_KEYS } from '../config';
 import { useAuth } from '../state/AuthContext';
 import { useHydrationReminders } from '../state/HydrationRemindersContext';
 import { useSettings } from '../state/SettingsContext';
@@ -85,7 +83,6 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
   const [paused, setPaused] = useState(false);
   const [routeAdvice, setRouteAdvice] = useState('');
   const [routeAdviceLoading, setRouteAdviceLoading] = useState(false);
-  const [adviceIsFromStorage, setAdviceIsFromStorage] = useState(false);
   const [robotModalVisible, setRobotModalVisible] = useState(false);
   const [lastKnownClimate, setLastKnownClimate] = useState<{ condicion: string; temperaturaC: number | null }>({
     condicion: 'Sin datos',
@@ -114,12 +111,11 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     setElapsedSec(Math.max(0, Math.floor((now - startTs) / 1000)));
   };
 
-  const refreshRouteAdvice = async (overrideClimate?: { condicion?: string; temperaturaC?: number | null }) => {
+  const fetchRouteAdvice = async () => {
     try {
       setRouteAdviceLoading(true);
-      setAdviceIsFromStorage(false);
-      const climaCondicion = String(overrideClimate?.condicion ?? lastKnownClimate.condicion ?? 'Sin datos');
-      const temperatura = overrideClimate?.temperaturaC ?? lastKnownClimate.temperaturaC;
+      const climaCondicion = String(lastKnownClimate.condicion ?? 'Sin datos');
+      const temperatura = lastKnownClimate.temperaturaC;
       const recommendation = await requestRouteAdvice({
         kmHoy: distKm,
         caloriasHoy: calorias,
@@ -129,14 +125,20 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         temperatura,
         hora: new Date().getHours(),
         actividad: tipo === 'ciclismo' ? 'bici' : 'caminata',
+        destino: route.params?.destNombre,
+        tiempoSegundos: elapsedSec,
       });
       setRouteAdvice(recommendation);
     } catch (e: any) {
       setRouteAdvice(e?.message ?? 'Servicio temporalmente no disponible, intenta más tarde.');
-      setAdviceIsFromStorage(false);
     } finally {
       setRouteAdviceLoading(false);
     }
+  };
+
+  const onRobotPress = () => {
+    setRobotModalVisible(true);
+    void fetchRouteAdvice();
   };
 
   const onGpsUpdate = (point: GPSPoint) => {
@@ -329,20 +331,6 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     }
   };
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const saved = await AsyncStorage.getItem(STORAGE_KEYS.lastRouteAdvice);
-        if (saved?.trim()) {
-          setRouteAdvice(saved);
-          setAdviceIsFromStorage(true);
-        }
-      } catch {
-        // Ignorar
-      }
-    })();
-  }, []);
-
   React.useEffect(() => {
     void initRoute();
     return () => {
@@ -456,7 +444,6 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           tipo,
         },
         autoOpenEnvironment: false,
-        routeAdvice,
         nivelActual,
         floraTotal,
         faunaTotal,
@@ -499,7 +486,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.buttonsRow}>
           <Pressable
-            onPress={() => setRobotModalVisible(true)}
+            onPress={onRobotPress}
             style={styles.robotBtn}
             accessibilityRole="button"
             accessibilityLabel="Consejos del asistente"
@@ -518,16 +505,9 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
             <Text style={styles.modalTitle}>🤖 Asistente de ruta</Text>
             <ScrollView style={{ maxHeight: 280 }}>
               <Text style={styles.adviceText}>
-                {routeAdviceLoading
-                  ? 'Generando recomendación…'
-                  : adviceIsFromStorage && routeAdvice
-                    ? `Último consejo disponible:\n\n${routeAdvice}`
-                    : routeAdvice || 'Toca "Actualizar recomendación" para obtener un consejo.'}
+                {routeAdviceLoading ? 'Generando recomendación…' : routeAdvice || '—'}
               </Text>
             </ScrollView>
-            <Pressable onPress={() => void refreshRouteAdvice()} style={styles.adviceRefreshBtn} accessibilityRole="button" disabled={routeAdviceLoading}>
-              <Text style={styles.adviceRefreshText}>{routeAdviceLoading ? 'Actualizando…' : 'Actualizar recomendación'}</Text>
-            </Pressable>
             <LargeButton title="Cerrar" onPress={() => setRobotModalVisible(false)} variant="outlinePrimary" />
           </View>
         </View>
@@ -627,11 +607,7 @@ const styles = StyleSheet.create({
   buttonsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   robotBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary },
   robotIcon: { fontSize: 28 },
-  adviceCard: { borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, padding: 12, gap: 8 },
-  adviceTitle: { color: colors.text, fontWeight: '900', fontFamily },
   adviceText: { color: colors.muted, fontWeight: '700', fontFamily, lineHeight: 20 },
-  adviceRefreshBtn: { alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.primarySoft },
-  adviceRefreshText: { color: colors.primary, fontWeight: '900', fontFamily },
   emergencySection: { borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FEF2F2', padding: 10, gap: 8 },
   emergencyTitle: { color: colors.text, fontWeight: '900', fontSize: 14, fontFamily },
   emergencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
