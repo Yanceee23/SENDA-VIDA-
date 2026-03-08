@@ -138,7 +138,6 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
 
   const onRobotPress = () => {
     setRobotModalVisible(true);
-    void fetchRouteAdvice();
   };
 
   const onGpsUpdate = (point: GPSPoint) => {
@@ -505,10 +504,13 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
             <Text style={styles.modalTitle}>🤖 Asistente de ruta</Text>
             <ScrollView style={{ maxHeight: 280 }}>
               <Text style={styles.adviceText}>
-                {routeAdviceLoading ? 'Generando recomendación…' : routeAdvice || '—'}
+                {routeAdviceLoading ? 'Generando recomendación…' : routeAdvice || 'Toca el botón para recibir recomendaciones personalizadas.'}
               </Text>
             </ScrollView>
-            <LargeButton title="Cerrar" onPress={() => setRobotModalVisible(false)} variant="outlinePrimary" />
+            {!routeAdvice && !routeAdviceLoading ? (
+              <LargeButton title="Obtener consejos" onPress={() => void fetchRouteAdvice()} variant="primary" />
+            ) : null}
+            <LargeButton title="Cerrar" onPress={() => { setRobotModalVisible(false); setRouteAdvice(''); }} variant="outlinePrimary" />
           </View>
         </View>
       </Modal>

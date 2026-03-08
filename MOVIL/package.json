@@ -8,8 +8,8 @@
     "start:clear": "npx expo start --go -c",
     "start:tunnel": "npx expo start --tunnel",
     "start:dev": "npx expo start --dev-client",
-    "run:android": "npx expo run:android",
-    "android": "npx expo run:android",
+    "run:android": "powershell -ExecutionPolicy Bypass -File run.ps1",
+    "android": "powershell -ExecutionPolicy Bypass -File run.ps1",
     "ios": "npx expo run:ios",
     "web": "npx expo start --web"
   },

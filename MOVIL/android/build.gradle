@@ -1,5 +1,17 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+// Asegurar que el SDK se resuelva antes de que los plugins lo requieran (fix para "SDK location not found")
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    def props = new Properties()
+    localPropertiesFile.withInputStream { props.load(it) }
+    def sdkDir = props.getProperty("sdk.dir")
+    if (sdkDir != null && !sdkDir.isEmpty()) {
+        System.setProperty("ANDROID_HOME", sdkDir)
+        System.setProperty("android.home", sdkDir)
+    }
+}
+
 buildscript {
   repositories {
     google()
