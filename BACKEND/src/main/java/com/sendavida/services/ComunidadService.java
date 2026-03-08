@@ -5,6 +5,7 @@ import com.sendavida.models.Comunidad;
 import com.sendavida.repository.ComunidadRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -13,6 +14,7 @@ import java.util.*;
 public class ComunidadService {
     private final ComunidadRepository comunidadRepository;
     private final ObjectMapper mapper;
+    private final SimpMessagingTemplate messagingTemplate;
 
     public List<Comunidad> getGrupos() { return comunidadRepository.findAll(); }
 
@@ -53,6 +55,13 @@ public class ComunidadService {
             .orElseThrow(() -> new RuntimeException("Código inválido o expirado."));
     }
 
+    private static final String NOMBRE_GRUPO_GLOBAL = "Comunidad";
+
+    public Comunidad getOrCreateGrupoGlobal() {
+        return comunidadRepository.findByNombreGrupoIgnoreCase(NOMBRE_GRUPO_GLOBAL)
+            .orElseGet(() -> crearGrupo(NOMBRE_GRUPO_GLOBAL, "Chat global de la comunidad"));
+    }
+
     @SuppressWarnings("unchecked")
     public Comunidad agregarMensaje(Long grupoId, String autorNombre, Long autorId, String texto) {
         Comunidad c = comunidadRepository.findById(grupoId)
@@ -60,12 +69,14 @@ public class ComunidadService {
         try {
             List<Map<String, Object>> mensajes = mapper.readValue(
                 c.getMensajes() != null ? c.getMensajes() : "[]", List.class);
+            long ts = System.currentTimeMillis();
             Map<String, Object> msg = new LinkedHashMap<>();
-            msg.put("id", System.currentTimeMillis());
+            msg.put("id", ts);
             msg.put("autorId", autorId);
             msg.put("autor", autorNombre);
             msg.put("texto", texto);
             msg.put("hora", LocalDateTime.now().toString());
+            msg.put("timestamp", ts);
             mensajes.add(msg);
             c.setMensajes(mapper.writeValueAsString(mensajes));
             return comunidadRepository.save(c);
@@ -84,6 +95,20 @@ public class ComunidadService {
         } catch (Exception e) {
             return Collections.emptyList();
         }
+    }
+
+    public List<Map<String, Object>> getMensajesChatGlobal() {
+        Comunidad global = getOrCreateGrupoGlobal();
+        return getMensajes(global.getId());
+    }
+
+    public Map<String, Object> agregarMensajeChatGlobal(String autorNombre, Long autorId, String texto) {
+        Comunidad global = getOrCreateGrupoGlobal();
+        agregarMensaje(global.getId(), autorNombre, autorId, texto);
+        List<Map<String, Object>> mensajes = getMensajes(global.getId());
+        Map<String, Object> nuevoMsg = mensajes.isEmpty() ? Map.of() : mensajes.get(mensajes.size() - 1);
+        messagingTemplate.convertAndSend("/topic/chat/global", nuevoMsg);
+        return nuevoMsg;
     }
 
     private String generarCodigoInvitacion() {

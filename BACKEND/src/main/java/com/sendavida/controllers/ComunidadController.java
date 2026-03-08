@@ -77,5 +77,30 @@ public class ComunidadController {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
     }
+
+    @GetMapping("/chat/mensajes")
+    public ResponseEntity<?> getMensajesChat() {
+        try {
+            return ResponseEntity.ok(comunidadService.getMensajesChatGlobal());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @PostMapping("/chat/mensajes")
+    public ResponseEntity<?> agregarMensajeChat(@RequestBody Map<String, Object> body) {
+        try {
+            String autor = body.get("autor") != null ? String.valueOf(body.get("autor")).trim() : "";
+            Object autorIdObj = body.get("autorId");
+            Long autorId = autorIdObj instanceof Number ? ((Number) autorIdObj).longValue() : 0L;
+            String texto = body.get("texto") != null ? String.valueOf(body.get("texto")).trim() : "";
+            if (texto.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "El texto es requerido."));
+            }
+            return ResponseEntity.ok(comunidadService.agregarMensajeChatGlobal(autor, autorId, texto));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
 }
 

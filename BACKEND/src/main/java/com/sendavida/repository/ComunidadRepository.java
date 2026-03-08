@@ -8,4 +8,5 @@ import java.util.Optional;
 @Repository
 public interface ComunidadRepository extends JpaRepository<Comunidad, Long> {
     Optional<Comunidad> findByCodigoInvitacionIgnoreCase(String codigoInvitacion);
+    Optional<Comunidad> findByNombreGrupoIgnoreCase(String nombreGrupo);
 }
