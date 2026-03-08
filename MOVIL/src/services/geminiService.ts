@@ -154,35 +154,48 @@ async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<R
   }
 }
 
-/** Una sola llamada a la API por acción del usuario (un token por toque del robot). */
+/**
+ * Prueba todos los modelos en orden hasta que uno funcione.
+ * Si el primero está ocupado (429), automáticamente intenta el siguiente.
+ */
 async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Promise<string> {
-  const model = GEMINI_MODELS[0];
-  try {
-    const res = await callGeminiOnce(model, body);
-    const parsed = await parseJsonSafe(res);
+  for (let i = 0; i < GEMINI_MODELS.length; i++) {
+    const model = GEMINI_MODELS[i];
+    const isLastModel = i === GEMINI_MODELS.length - 1;
+    try {
+      const res = await callGeminiOnce(model, body);
+      const parsed = await parseJsonSafe(res);
 
-    if (!res.ok) {
-      const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
-      const errMessage =
-        maybeObj?.error?.message ??
-        (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
+      if (!res.ok) {
+        const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
+        const errMessage =
+          maybeObj?.error?.message ??
+          (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
 
-      if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
-      if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
-      if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
+        if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
+        if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
+        // Si está ocupado y hay otro modelo, intenta el siguiente
+        if (isRateLimitError(res.status) && !isLastModel) continue;
+        if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
+        if (isModelNotFound(res.status, errMessage) && !isLastModel) continue;
+        if (!isLastModel) continue;
+        throw new Error(fallbackMessage);
+      }
+
+      const text = extractText(parsed);
+      return text ?? fallbackMessage;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error ?? '');
+      if (message === CONFIG_ERROR_MESSAGE) throw error;
+      if (message === NETWORK_ERROR_MESSAGE) throw error;
+      if (message === RATE_LIMIT_MESSAGE && isLastModel) throw error;
+      if (message === RATE_LIMIT_MESSAGE && !isLastModel) continue;
+      if (isNetworkError(0, message)) throw new Error(NETWORK_ERROR_MESSAGE);
+      if (!isLastModel) continue;
       throw new Error(fallbackMessage);
     }
-
-    const text = extractText(parsed);
-    return text ?? fallbackMessage;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error ?? '');
-    if (message === CONFIG_ERROR_MESSAGE) throw error;
-    if (message === RATE_LIMIT_MESSAGE) throw error;
-    if (message === fallbackMessage) throw error;
-    if (isNetworkError(0, message)) throw new Error(NETWORK_ERROR_MESSAGE);
-    throw new Error(fallbackMessage);
   }
+  throw new Error(fallbackMessage);
 }
 
 export async function requestRouteAdvice(input: RouteAdviceInput): Promise<string> {
