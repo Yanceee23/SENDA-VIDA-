@@ -139,6 +139,9 @@ function isRateLimitError(status: number): boolean {
 }
 
 async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<Response> {
+  console.log('🔑 KEY:', GEMINI_API_KEY ? 'OK' : 'VACÍA');
+  console.log('🤖 MODEL:', model);
+  console.log('🌐 URL:', buildGeminiUrl(model));
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
@@ -148,6 +151,7 @@ async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<R
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    console.log('📡 STATUS:', res.status);
     return res;
   } finally {
     clearTimeout(timeoutId);
@@ -172,9 +176,10 @@ async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Pro
           maybeObj?.error?.message ??
           (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
 
+        console.log('❌ ERROR:', res.status, errMessage);
+
         if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
         if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
-        // Si está ocupado y hay otro modelo, intenta el siguiente
         if (isRateLimitError(res.status) && !isLastModel) continue;
         if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
         if (isModelNotFound(res.status, errMessage) && !isLastModel) continue;
@@ -186,6 +191,7 @@ async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Pro
       return text ?? fallbackMessage;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error ?? '');
+      console.log('💥 CATCH:', message);
       if (message === CONFIG_ERROR_MESSAGE) throw error;
       if (message === NETWORK_ERROR_MESSAGE) throw error;
       if (message === RATE_LIMIT_MESSAGE && isLastModel) throw error;

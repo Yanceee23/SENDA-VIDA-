@@ -29,10 +29,9 @@ export function normalizeApiBaseUrl(raw: string): string {
   }
 }
 
-// 🔑 Lee desde .env (EXPO_PUBLIC_GEMINI_API_KEY). Consíguela gratis en: https://aistudio.google.com
 export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-export const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.5-flash-preview-04-17'] as const;
+export const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const;
 
 /** Firebase Realtime Database para chat comunitario. Configura en .env */
 export const FIREBASE_CONFIG = {
