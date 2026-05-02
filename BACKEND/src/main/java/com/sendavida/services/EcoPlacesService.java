@@ -30,6 +30,19 @@ public class EcoPlacesService {
 
     private record CacheEntry(long storedAtMs, List<Map<String, Object>> items) {}
 
+    private static final List<Map<String, Object>> RIOS_FALLBACK = List.of(
+            fallbackRiver("fallback-river:lempa", "Río Lempa", 13.705, -88.860, "Río principal de El Salvador"),
+            fallbackRiver("fallback-river:paz", "Río Paz", 13.812, -90.095, "Río fronterizo entre El Salvador y Guatemala"),
+            fallbackRiver("fallback-river:goascoran", "Río Goascorán", 13.470, -87.830, "Río fronterizo entre El Salvador y Honduras"),
+            fallbackRiver("fallback-river:torola", "Río Torola", 13.872, -88.158, "Río del oriente de El Salvador"),
+            fallbackRiver("fallback-river:sumpul", "Río Sumpul", 14.105, -89.090, "Río del norte de El Salvador"),
+            fallbackRiver("fallback-river:acelhuate", "Río Acelhuate", 13.738, -89.160, "Río de la zona central de El Salvador"),
+            fallbackRiver("fallback-river:sucio", "Río Sucio", 13.775, -89.440, "Río de la zona occidental-central de El Salvador"),
+            fallbackRiver("fallback-river:jiboa", "Río Jiboa", 13.547, -88.980, "Río de la zona paracentral de El Salvador"),
+            fallbackRiver("fallback-river:grande-san-miguel", "Río Grande de San Miguel", 13.452, -88.165, "Río del oriente de El Salvador"),
+            fallbackRiver("fallback-river:sensunapan", "Río Sensunapán", 13.710, -89.720, "Río del occidente de El Salvador")
+    );
+
     public Map<String, Object> listar(String tipo, String q, int page, int size) {
         String t = normalizeTipo(tipo);
         List<Map<String, Object>> base = getOrFetch(t);
@@ -143,9 +156,11 @@ public class EcoPlacesService {
 
             List<Map<String, Object>> out = new ArrayList<>(unique.values());
             out.sort(Comparator.comparing(o -> String.valueOf(o.getOrDefault("nombre", ""))));
+            if (out.isEmpty() && "rios".equals(tipo)) return RIOS_FALLBACK;
             return out;
         } catch (Exception e) {
             log.error("EcoPlaces Overpass error ({}) : {}", tipo, e.getMessage());
+            if ("rios".equals(tipo)) return RIOS_FALLBACK;
             return List.of();
         }
     }
@@ -159,8 +174,10 @@ public class EcoPlacesService {
                 relation["natural"="beach"]["name"](area.a);
                 """;
             case "rios" -> """
-                way["waterway"~"^(river|stream)$"](area.a);
-                relation["waterway"~"^(river|stream)$"](area.a);
+                way["waterway"="river"]["name"](area.a);
+                relation["waterway"="river"]["name"](area.a);
+                way["natural"="water"]["water"~"^(river|riverbank)$"]["name"](area.a);
+                relation["natural"="water"]["water"~"^(river|riverbank)$"]["name"](area.a);
                 """;
             case "lagos" -> """
                 way["natural"="water"]["water"="lake"](area.a);
@@ -240,6 +257,23 @@ public class EcoPlacesService {
             }
         }
         return null;
+    }
+
+    private static Map<String, Object> fallbackRiver(String id, String nombre, double lat, double lng, String descripcion) {
+        Map<String, Object> tags = new LinkedHashMap<>();
+        tags.put("name", nombre);
+        tags.put("waterway", "river");
+        tags.put("description", descripcion);
+
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("osm_type", "fallback");
+        row.put("osm_id", id);
+        row.put("nombre", nombre);
+        row.put("tipo", "rios");
+        row.put("lat", lat);
+        row.put("lng", lng);
+        row.put("tags", tags);
+        return row;
     }
 
     /** Ríos/parques sin name:* muestran un label sintético para listados */

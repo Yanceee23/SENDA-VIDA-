@@ -180,8 +180,12 @@ export function SafeRoutesScreen() {
       if (base) {
         try {
           const fromApi = await fetchEcoPlacesFromBackend(base, category, user?.token);
-          // Prioridad backend: [] es válido y no debe forzar fallback.
-          res = fromApi;
+          if (category === 'rios' && fromApi.length === 0) {
+            res = await getPlacesByCategory(category);
+          } else {
+            // En otras categorías, [] del backend es válido y no debe forzar fallback.
+            res = fromApi;
+          }
         } catch {
           // Fallback solo en error real de red/servidor.
           res = await getPlacesByCategory(category);

@@ -49,6 +49,19 @@ const OVERPASS_URLS = [
 const FETCH_TIMEOUT_MS = 120_000;
 const CLIENT_USER_ERROR = 'No pudimos consultar lugares naturales en este momento.';
 
+const FALLBACK_RIVERS_SV: OverpassPlace[] = [
+  { id: 'fallback-river:lempa', nombre: 'Río Lempa', descripcion: 'Río principal de El Salvador', categoria: 'rios', lat: 13.705, lng: -88.86 },
+  { id: 'fallback-river:paz', nombre: 'Río Paz', descripcion: 'Río fronterizo entre El Salvador y Guatemala', categoria: 'rios', lat: 13.812, lng: -90.095 },
+  { id: 'fallback-river:goascoran', nombre: 'Río Goascorán', descripcion: 'Río fronterizo entre El Salvador y Honduras', categoria: 'rios', lat: 13.47, lng: -87.83 },
+  { id: 'fallback-river:torola', nombre: 'Río Torola', descripcion: 'Río del oriente de El Salvador', categoria: 'rios', lat: 13.872, lng: -88.158 },
+  { id: 'fallback-river:sumpul', nombre: 'Río Sumpul', descripcion: 'Río del norte de El Salvador', categoria: 'rios', lat: 14.105, lng: -89.09 },
+  { id: 'fallback-river:acelhuate', nombre: 'Río Acelhuate', descripcion: 'Río de la zona central de El Salvador', categoria: 'rios', lat: 13.738, lng: -89.16 },
+  { id: 'fallback-river:sucio', nombre: 'Río Sucio', descripcion: 'Río de la zona occidental-central de El Salvador', categoria: 'rios', lat: 13.775, lng: -89.44 },
+  { id: 'fallback-river:jiboa', nombre: 'Río Jiboa', descripcion: 'Río de la zona paracentral de El Salvador', categoria: 'rios', lat: 13.547, lng: -88.98 },
+  { id: 'fallback-river:grande-san-miguel', nombre: 'Río Grande de San Miguel', descripcion: 'Río del oriente de El Salvador', categoria: 'rios', lat: 13.452, lng: -88.165 },
+  { id: 'fallback-river:sensunapan', nombre: 'Río Sensunapán', descripcion: 'Río del occidente de El Salvador', categoria: 'rios', lat: 13.71, lng: -89.72 },
+];
+
 function queryByCategory(category: PlaceCategory): string {
   switch (category) {
     case 'volcanes':
@@ -81,11 +94,12 @@ way["leisure"~"^(park|nature_reserve)$"]${BBOX};
 );
 out center;`;
     case 'rios':
-      // No dependemos solo de name/ref: muchos ríos en OSM no tienen etiqueta de nombre.
       return `[out:json][timeout:180];
 (
-way["waterway"~"^(river|stream)$"]${BBOX};
-relation["waterway"~"^(river|stream)$"]${BBOX};
+way["waterway"="river"]["name"]${BBOX};
+relation["waterway"="river"]["name"]${BBOX};
+way["natural"="water"]["water"~"^(river|riverbank)$"]["name"]${BBOX};
+relation["natural"="water"]["water"~"^(river|riverbank)$"]["name"]${BBOX};
 );
 out center;`;
     case 'lagos':
@@ -110,7 +124,9 @@ function mapElement(element: OverpassElement, category: PlaceCategory): Overpass
   const lng = Number(element.lon ?? element.center?.lon);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const tags = element.tags ?? {};
-  const nombre = String(tags.name ?? tags['name:es'] ?? '').trim() || `Lugar ${element.id ?? ''}`.trim();
+  const nombre =
+    String(tags['name:es'] ?? tags.name ?? '').trim() ||
+    (category === 'rios' ? `Río ${element.id ?? ''}` : `Lugar ${element.id ?? ''}`).trim();
   const descriptionParts = [tags.description, tags.tourism, tags.natural, tags.leisure, tags.waterway].filter(Boolean);
   return {
     id: `${String(element.type ?? 'x')}:${String(element.id ?? `${lat},${lng}`)}`,
@@ -170,6 +186,9 @@ export async function getPlacesByCategory(category: PlaceCategory): Promise<Over
   const raw = await requestOverpass(query);
   const elements = Array.isArray(raw.elements) ? raw.elements : [];
   const mapped = elements.map((e) => mapElement(e, category)).filter((e): e is OverpassPlace => e != null);
+  if (mapped.length === 0 && category === 'rios') {
+    return FALLBACK_RIVERS_SV;
+  }
   if (mapped.length > 0) {
     await setJson(cacheKey, { storedAt: now, items: mapped });
   }
