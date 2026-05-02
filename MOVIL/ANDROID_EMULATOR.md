@@ -1,46 +1,37 @@
-## Probar en emulador (Android Studio + Expo Go)
+## Emulador Android + backend local
 
-### 0) Configuración .env
-Crea el archivo `.env` en `MOVIL/` (copia de `.env.example`) con la URL del backend para emulador:
+`.env` en `MOVIL/` (no se sube a git):
 
 ```
 EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8084/api
 ```
 
-`10.0.2.2` es el alias del host en el emulador Android (equivale a localhost de tu PC). Sin esto, la app pedirá configurar la URL manualmente en Ajustes.
+`10.0.2.2` es el host de tu máquina visto desde el AVD.
 
-### 1) Instala Android Studio + SDK
-- En Android Studio abre **SDK Manager** e instala:
-  - **Android SDK Platform** (una API estable, p. ej. 34/35)
-  - **Android SDK Build-Tools**
-  - **Android SDK Platform-Tools** (incluye `adb`)
-  - **Android Emulator**
+### Herramientas
 
-### 2) Crea y arranca un AVD
-- En **Device Manager** crea un emulador (Pixel + API estable) y arráncalo.
+- Android Studio: SDK Platform, Build-Tools, Platform-Tools, un AVD.
 
-### 3) Prepara `adb` en la terminal (solo esta sesión)
-En `MOVIL/` ejecuta:
+### adb en PowerShell (sesión actual)
+
+Desde `MOVIL`:
 
 ```powershell
 .\scripts\android-env.ps1
 ```
 
-Si tu SDK está en una ruta no estándar, edita la variable sugerida por el script (o configura `ANDROID_SDK_ROOT` en Windows).
+Si el SDK está raro, ajusta rutas dentro del script o define `ANDROID_SDK_ROOT`.
 
-### 4) Ejecuta Expo y abre en Android
-Con el emulador abierto:
+### Levantar app con emulador ya abierto
 
 ```powershell
 .\scripts\run-android.ps1
 ```
 
-Alternativa manual:
+O a mano (mismo PATH que arriba):
 
 ```powershell
-$env:ANDROID_SDK_ROOT="RUTA_A_TU_SDK"
-$env:ANDROID_HOME=$env:ANDROID_SDK_ROOT
-$env:Path="$env:ANDROID_SDK_ROOT\platform-tools;$env:ANDROID_SDK_ROOT\emulator;$env:Path"
 npx expo start --android
 ```
 
+**Cachés:** Expo/Metro viven fuera del repo (`node_modules/.cache`, `.expo`). Si algo huele raro: `npm run start:clear` en `MOVIL`.

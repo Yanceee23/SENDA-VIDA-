@@ -43,7 +43,9 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["@maplibre/maplibre-react-native"],
+      [
+        "@maplibre/maplibre-react-native"
+      ],
       [
         "expo-location",
         {
@@ -63,7 +65,8 @@
           "cameraPermission": "Permite a SENDA VIDA usar tu cámara para escanear/tomar fotos."
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-build-properties"
     ],
     "extra": {
       "eas": {

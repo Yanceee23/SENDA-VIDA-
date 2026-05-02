@@ -1,9 +1,4 @@
-/**
- * SERVICIO GEMINI - REGLA ABSOLUTA DE USO:
- * Solo llamar cuando el usuario toque explícitamente el botón del robot.
- * NUNCA en useEffect, NUNCA al cargar pantalla, NUNCA automáticamente.
- * Un toque = una llamada = un token.
- */
+// Gemini se usa desde el botón del asistente; no hagas fetch en montaje ni useEffect.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GEMINI_API_BASE_URL, GEMINI_API_KEY, GEMINI_MODELS, STORAGE_KEYS } from '../config';
 
@@ -45,7 +40,58 @@ type GeminiRequestBody = {
         }
     >;
   }>;
+  generationConfig?: Record<string, unknown>;
 };
+
+const IDENTIFY_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    nombreComun: { type: 'string', description: 'Nombre común en español.' },
+    nombreCientifico: {
+      type: 'string',
+      description: 'Nombre binomial o género/especie; si no es seguro, decirlo explícitamente.',
+    },
+    tipo: {
+      type: 'string',
+      description: 'Solo una palabra: planta, animal, hongo o insecto.',
+    },
+    tipoPlanta_o_grupo: {
+      type: 'string',
+      description:
+        'Grupo fino: p. ej. arbusto trepador, suculenta, hierba, árbol, pez, ave. Nunca solo repetir "planta" o "animal".',
+    },
+    descripcion: {
+      type: 'string',
+      description: '2–4 frases sobre forma, hojas, flores, color, contexto de la foto. No una sola palabra genérica.',
+    },
+    habitat: {
+      type: 'string',
+      description: 'Medio típico: clima, suelo, jardín, maceta, bosque seco tropical, etc.',
+    },
+    distribucion: { type: 'string', description: 'Región biogeográfica o países de origen habitual.' },
+    peligrosidad: { type: 'string', description: 'Seguridad o ausencia de riesgos conocidos.' },
+    datoCurioso: { type: 'string', description: 'Un solo dato interesante y verificable.' },
+  },
+  required: [
+    'nombreComun',
+    'nombreCientifico',
+    'tipo',
+    'tipoPlanta_o_grupo',
+    'descripcion',
+    'habitat',
+    'distribucion',
+    'peligrosidad',
+    'datoCurioso',
+  ],
+};
+
+function identificationGenerationConfig(): Record<string, unknown> {
+  return {
+    temperature: 0.25,
+    responseMimeType: 'application/json',
+    responseSchema: IDENTIFY_JSON_SCHEMA,
+  };
+}
 
 type RouteAdviceInput = {
   kmHoy: number;
@@ -64,7 +110,6 @@ type RouteAdviceInput = {
 export type LivingThingIdentification = {
   categoria: 'animal' | 'planta' | 'hongo' | 'insecto' | 'desconocido';
   nombreComun: string;
-  /** Ej.: suculenta, árbol, hierba, arbusto, leguminosa… (no debe ser solo "planta") */
   tipoEspecifico: string;
   descripcion: string;
   nombreCientifico: string;
@@ -141,7 +186,7 @@ function isRateLimitError(status: number): boolean {
 }
 
 async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<Response> {
-  console.log('🔑 KEY:', GEMINI_API_KEY ? 'OK' : 'VACÍA');
+  console.log('🔑 Gemini API:', GEMINI_API_KEY ? 'clave configurada' : 'vacía (.env)');
   console.log('🤖 MODEL:', model);
   console.log('🌐 URL:', buildGeminiUrl(model));
   const controller = new AbortController();
@@ -160,47 +205,60 @@ async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<R
   }
 }
 
-/**
- * Prueba todos los modelos en orden hasta que uno funcione.
- * Si el primero está ocupado (429), automáticamente intenta el siguiente.
- */
-async function callGemini(body: GeminiRequestBody, fallbackMessage: string): Promise<string> {
+// Va probando modelos en orden; con structured intenta primero con JSON/schema y si falla, sin eso.
+async function callGemini(
+  body: GeminiRequestBody,
+  fallbackMessage: string,
+  structured?: { generationConfig: Record<string, unknown> }
+): Promise<string> {
+  const { generationConfig: _omit, ...base } = body;
+  const bodyVariants: GeminiRequestBody[] = structured
+    ? [{ ...base, generationConfig: structured.generationConfig }, base]
+    : [base];
+
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
     const model = GEMINI_MODELS[i];
     const isLastModel = i === GEMINI_MODELS.length - 1;
-    try {
-      const res = await callGeminiOnce(model, body);
-      const parsed = await parseJsonSafe(res);
+    for (const fullBody of bodyVariants) {
+      try {
+        const res = await callGeminiOnce(model, fullBody);
+        const parsed = await parseJsonSafe(res);
 
-      if (!res.ok) {
-        const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
-        const errMessage =
-          maybeObj?.error?.message ??
-          (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
+        if (!res.ok) {
+          const maybeObj = parsed && typeof parsed === 'object' ? (parsed as GeminiGenerateResponse) : null;
+          const errMessage =
+            maybeObj?.error?.message ??
+            (typeof parsed === 'string' ? parsed : `Error HTTP ${res.status}`);
 
-        console.log('❌ ERROR:', res.status, errMessage);
+          console.log('❌ ERROR:', res.status, errMessage);
 
-        if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
-        if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
-        if (isRateLimitError(res.status) && !isLastModel) continue;
-        if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
-        if (isModelNotFound(res.status, errMessage) && !isLastModel) continue;
-        if (!isLastModel) continue;
+          if (isConfigError(res.status, errMessage)) throw new Error(CONFIG_ERROR_MESSAGE);
+          if (isNetworkError(res.status, errMessage)) throw new Error(NETWORK_ERROR_MESSAGE);
+          if (isRateLimitError(res.status) && !isLastModel) break;
+          if (isRateLimitError(res.status)) throw new Error(RATE_LIMIT_MESSAGE);
+          if (isModelNotFound(res.status, errMessage) && !isLastModel) break;
+          // A veces 400 si ese modelo no acepta el body con schema; probamos sin generationConfig.
+          if (res.status === 400 && fullBody.generationConfig && bodyVariants.length > 1) continue;
+          if (!isLastModel) break;
+          throw new Error(fallbackMessage);
+        }
+
+        const text = extractText(parsed);
+        if (text) return text;
+        if (fullBody.generationConfig && bodyVariants.length > 1) continue;
+        if (!isLastModel) break;
+        return fallbackMessage;
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error ?? '');
+        console.log('💥 CATCH:', message);
+        if (message === CONFIG_ERROR_MESSAGE) throw error;
+        if (message === NETWORK_ERROR_MESSAGE) throw error;
+        if (message === RATE_LIMIT_MESSAGE && isLastModel) throw error;
+        if (message === RATE_LIMIT_MESSAGE && !isLastModel) break;
+        if (isNetworkError(0, message)) throw new Error(NETWORK_ERROR_MESSAGE);
+        if (!isLastModel) break;
         throw new Error(fallbackMessage);
       }
-
-      const text = extractText(parsed);
-      return text ?? fallbackMessage;
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error ?? '');
-      console.log('💥 CATCH:', message);
-      if (message === CONFIG_ERROR_MESSAGE) throw error;
-      if (message === NETWORK_ERROR_MESSAGE) throw error;
-      if (message === RATE_LIMIT_MESSAGE && isLastModel) throw error;
-      if (message === RATE_LIMIT_MESSAGE && !isLastModel) continue;
-      if (isNetworkError(0, message)) throw new Error(NETWORK_ERROR_MESSAGE);
-      if (!isLastModel) continue;
-      throw new Error(fallbackMessage);
     }
   }
   throw new Error(fallbackMessage);
@@ -225,7 +283,7 @@ Datos: ${input.kmHoy.toFixed(1)} km hoy, ${Math.round(input.caloriasHoy)} cal, $
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.lastRouteAdvice, result);
     } catch {
-      // Ignorar si falla el guardado
+      // no pasa nada si no se puede guardar
     }
   }
   return result;
@@ -259,13 +317,11 @@ function normalizeCategoria(raw: unknown): LivingThingIdentification['categoria'
   return 'desconocido';
 }
 
-/** "planta", "animal"… sirven solo para categoría, no como tipo descriptivo. */
 function isGenericCategoriaToken(s: string): boolean {
   const x = s.trim().toLowerCase();
   return x === 'planta' || x === 'animal' || x === 'hongo' || x === 'insecto' || x === 'desconocido';
 }
 
-/** Arma texto de hábitat desde variantes típicas de modelos JSON. */
 function pickHabitat(data: Record<string, unknown>): string {
   return safeString(
     data.habitat ?? data.medio_ambiente ?? data.ecosistema ?? data.donde_vive,
@@ -273,7 +329,6 @@ function pickHabitat(data: Record<string, unknown>): string {
   );
 }
 
-/** Tipo dentro de la categoría (p. ej. suculenta, árbol, pasto, reptil herbívoro…). No uses solo "planta". */
 function pickTipoEspecifico(data: Record<string, unknown>): string {
   const fromModel = safeString(
     data.tipoEspecifico ??
@@ -296,7 +351,6 @@ function pickTipoEspecifico(data: Record<string, unknown>): string {
   return 'No disponible';
 }
 
-/** Descripción física o de uso (forma, hojas, flores, etc.). Jamás debe ser solo la categoría (“planta”). */
 function pickDescripcion(data: Record<string, unknown>): string {
   const d = safeString(
     data.descripcion ?? data.description ?? data.texto_descripcion ?? data.caracteristicas ?? data.detalle,
@@ -322,7 +376,7 @@ function normalizeIdentification(raw: unknown, rawText: string): LivingThingIden
   const descripcion = pickDescripcion(data);
   const habitatRaw = pickHabitat(data);
   let tipoEspecifico = pickTipoEspecifico(data);
-  /* Si hay descripción válida pero el modelo no puso clasificación más fina, no dejamos “solo planta”. */
+  // Si el JSON trae texto útil pero el tipo viene vacío, evitamos dejar solo "planta/animal".
   if (
     tipoEspecifico === 'No disponible' &&
     descripcion !== 'No disponible' &&
@@ -415,7 +469,8 @@ Ejemplo válido conceptual (solo estructura, no inventes estos datos desde la fo
         },
       ],
     },
-    'No pude identificar. Verifica tu conexión e intenta de nuevo.'
+    'No pude identificar. Verifica tu conexión e intenta de nuevo.',
+    { generationConfig: identificationGenerationConfig() }
   );
 
   const jsonCandidate = extractJsonCandidate(response);

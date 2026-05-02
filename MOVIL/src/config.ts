@@ -1,17 +1,12 @@
-// Define EXPO_PUBLIC_API_BASE_URL por entorno (dev/staging/prod) para evitar IPs locales hardcodeadas.
+// Viene del .env (EXPO_PUBLIC_API_BASE_URL).
 const ENV_API_BASE_URL = String(process.env.EXPO_PUBLIC_API_BASE_URL ?? '').trim();
 
-// Solo para el botón "Emulador" en Ajustes. NO usar como default en celular físico.
+// Dirección típica del backend desde el emulador Android (10.0.2.2 = host). En físico mejor el env.
 export const EMULATOR_API_BASE_URL = 'http://10.0.2.2:8084/api';
-// Priorizar env; si vacío, el usuario debe configurar en Ajustes → Conexión.
+// Sin env, en la app tienen que ponerla en Ajustes.
 export const DEFAULT_API_BASE_URL = ENV_API_BASE_URL ? normalizeApiBaseUrl(ENV_API_BASE_URL) : '';
 
-/**
- * Normaliza la URL base de la API para evitar errores de conexión.
- * - Asegura esquema http/https
- * - Añade puerto 8084 si falta
- * - Añade sufijo /api si falta
- */
+// Ponemos http/https, puerto 8084 si falta en local/IP y el sufijo /api.
 export function normalizeApiBaseUrl(raw: string): string {
   let s = String(raw ?? '').trim();
   if (!s) return '';
@@ -30,10 +25,17 @@ export function normalizeApiBaseUrl(raw: string): string {
 }
 
 export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
+// Endpoint v1beta de la API Gemini (REST).
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
-export const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'] as const;
 
-/** Firebase Realtime Database para chat comunitario. Configura en .env */
+// Si uno falla o se satura (429), se prueba el siguiente de la lista.
+export const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+] as const;
+
+// Firebase RTDB para el chat; keys en el .env.
 export const FIREBASE_CONFIG = {
   apiKey: String(process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '').trim(),
   authDomain: String(process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '').trim(),
@@ -53,7 +55,7 @@ export const STORAGE_KEYS = {
   eventReminders: 'SV_EVENT_REMINDERS_V1',
   pendingInvite: 'SV_PENDING_INVITE_V1',
   statsPrefix: 'stats_',
-  /** V2: invalide caches antiguos (p.ej. listas vacías guardadas durante 24h). */
+  // Prefix v2 para no mezclar con cachés viejos (p.ej. listas vacías un día guardadas).
   overpassCachePrefix: 'SV_OVERPASS_V2_',
   lastRouteAdvice: 'SV_LAST_ROUTE_ADVICE',
 };

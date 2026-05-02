@@ -16,14 +16,25 @@
     },
     "apk": {
       "distribution": "internal",
+      "cache": {
+        "disabled": true
+      },
+      "env": {
+        "EAS_BUILD_DISABLE_NPM_CACHE": "1"
+      },
       "android": {
         "buildType": "apk",
         "image": "latest"
       }
     },
     "production": {
+      "distribution": "internal",
+      "cache": {
+        "disabled": true
+      },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://senda-vida.onrender.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://senda-vida.onrender.com/api",
+        "EAS_BUILD_DISABLE_NPM_CACHE": "1"
       },
       "android": {
         "buildType": "apk"
