@@ -442,11 +442,26 @@ export function DashboardScreen() {
                   {assistantImageUri ? <Image source={{ uri: assistantImageUri }} style={styles.previewImage} /> : null}
                   <Text style={styles.identifyName}>{assistantIdentification?.nombreComun ?? 'Sin identificar'}</Text>
                   <Text style={styles.identifyScientific}>{assistantIdentification?.nombreCientifico ?? 'No disponible'}</Text>
-                  <Text style={styles.identifyMeta}>Tipo: {assistantIdentification?.categoria ?? 'desconocido'}</Text>
-                  {assistantIdentification?.tipoEspecifico ? (
-                    <Text style={styles.identifyMeta}>Descripción: {assistantIdentification.tipoEspecifico}</Text>
-                  ) : null}
-                  <Text style={styles.identifyMeta}>Hábitat: {assistantIdentification?.habitat ?? 'No disponible'}</Text>
+                  <Text style={styles.identifyMeta}>
+                    <Text style={{ fontWeight: '900', color: colors.text }}>Categoría: </Text>
+                    <Text>{assistantIdentification?.categoria ?? 'desconocido'}</Text>
+                  </Text>
+                  <Text style={styles.identifyMeta}>
+                    <Text style={{ fontWeight: '900', color: colors.text }}>Tipo / grupo: </Text>
+                    <Text>{assistantIdentification?.tipoEspecifico ?? 'No disponible'}</Text>
+                  </Text>
+                  <Text style={styles.identifyMeta}>
+                    <Text style={{ fontWeight: '900', color: colors.text }}>Descripción: </Text>
+                    <Text>{assistantIdentification?.descripcion ?? 'No disponible'}</Text>
+                  </Text>
+                  <Text style={styles.identifyMeta}>
+                    <Text style={{ fontWeight: '900', color: colors.text }}>Distribución habitual: </Text>
+                    <Text>{assistantIdentification?.distribucion ?? 'No disponible'}</Text>
+                  </Text>
+                  <Text style={styles.identifyMeta}>
+                    <Text style={{ fontWeight: '900', color: colors.text }}>Hábitat: </Text>
+                    <Text>{assistantIdentification?.habitat ?? 'No disponible'}</Text>
+                  </Text>
                   {assistantIdentification?.recomendacionUsuario ? (
                     <View style={styles.funFactCard}>
                       <Text style={styles.funFactTitle}>💡 Dato curioso</Text>

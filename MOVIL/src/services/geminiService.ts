@@ -64,7 +64,9 @@ type RouteAdviceInput = {
 export type LivingThingIdentification = {
   categoria: 'animal' | 'planta' | 'hongo' | 'insecto' | 'desconocido';
   nombreComun: string;
+  /** Ej.: suculenta, árbol, hierba, arbusto, leguminosa… (no debe ser solo "planta") */
   tipoEspecifico: string;
+  descripcion: string;
   nombreCientifico: string;
   distribucion: string;
   habitat: string;
@@ -257,6 +259,54 @@ function normalizeCategoria(raw: unknown): LivingThingIdentification['categoria'
   return 'desconocido';
 }
 
+/** "planta", "animal"… sirven solo para categoría, no como tipo descriptivo. */
+function isGenericCategoriaToken(s: string): boolean {
+  const x = s.trim().toLowerCase();
+  return x === 'planta' || x === 'animal' || x === 'hongo' || x === 'insecto' || x === 'desconocido';
+}
+
+/** Arma texto de hábitat desde variantes típicas de modelos JSON. */
+function pickHabitat(data: Record<string, unknown>): string {
+  return safeString(
+    data.habitat ?? data.medio_ambiente ?? data.ecosistema ?? data.donde_vive,
+    ''
+  );
+}
+
+/** Tipo dentro de la categoría (p. ej. suculenta, árbol, pasto, reptil herbívoro…). No uses solo "planta". */
+function pickTipoEspecifico(data: Record<string, unknown>): string {
+  const fromModel = safeString(
+    data.tipoEspecifico ??
+      data.tipo_especifico ??
+      data.tipoPlanta_o_grupo ??
+      data.tipoPlanta ??
+      data.tipo_planta ??
+      data.clasificacionPlanta ??
+      data.grupo_taxonomico ??
+      data.grupoTaxonomico ??
+      data.grupo ??
+      data.familia ??
+      data.clase_taxonomica ??
+      data.caracterTipo,
+    ''
+  );
+  if (fromModel && !isGenericCategoriaToken(fromModel)) return fromModel;
+  const tipoRaw = safeString(data.tipo, '');
+  if (tipoRaw && !isGenericCategoriaToken(tipoRaw)) return tipoRaw;
+  return 'No disponible';
+}
+
+/** Descripción física o de uso (forma, hojas, flores, etc.). Jamás debe ser solo la categoría (“planta”). */
+function pickDescripcion(data: Record<string, unknown>): string {
+  const d = safeString(
+    data.descripcion ?? data.description ?? data.texto_descripcion ?? data.caracteristicas ?? data.detalle,
+    ''
+  );
+  const lower = d.toLowerCase().trim();
+  if (lower === 'planta' || lower === 'animal' || lower === 'hongo' || lower === 'insecto') return '';
+  return d.length > 0 ? d : 'No disponible';
+}
+
 function normalizeIdentification(raw: unknown, rawText: string): LivingThingIdentification | null {
   if (!raw || typeof raw !== 'object') return null;
   const data = raw as Record<string, unknown>;
@@ -269,13 +319,29 @@ function normalizeIdentification(raw: unknown, rawText: string): LivingThingIden
   const nombreComun = safeString(data.nombre ?? data.nombreComun, 'Sin identificar');
   const tipoStr = safeString(data.tipo ?? data.categoria ?? data.tipoEspecifico, '');
   const categoria = normalizeCategoria((data.categoria ?? data.tipo ?? tipoStr) || null);
+  const descripcion = pickDescripcion(data);
+  const habitatRaw = pickHabitat(data);
+  let tipoEspecifico = pickTipoEspecifico(data);
+  /* Si hay descripción válida pero el modelo no puso clasificación más fina, no dejamos “solo planta”. */
+  if (
+    tipoEspecifico === 'No disponible' &&
+    descripcion !== 'No disponible' &&
+    data.tipoEspecifico == null &&
+    data.tipoPlanta_o_grupo == null &&
+    data.tipo_planta == null &&
+    data.tipoPlanta == null
+  ) {
+    tipoEspecifico = '(Clasificación pendiente — ver descripción)';
+  }
+
   return {
     categoria,
     nombreComun,
-    tipoEspecifico: safeString(data.tipoEspecifico ?? data.tipo ?? data.descripcion, 'No disponible'),
+    tipoEspecifico,
+    descripcion,
     nombreCientifico: safeString(data.nombreCientifico, 'No disponible'),
-    distribucion: safeString(data.distribucion, 'No disponible'),
-    habitat: safeString(data.habitat, 'No disponible'),
+    distribucion: safeString(data.distribucion ?? data.distribución, 'No disponible'),
+    habitat: habitatRaw.length > 0 ? habitatRaw : 'No disponible',
     peligrosidad: safeString(data.peligrosidad, 'No disponible'),
     confianza: Math.max(0, Math.min(100, safeNumber(data.confianza, 40))),
     posiblesCoincidencias: posibles,
@@ -300,6 +366,7 @@ function fallbackIdentificationFromText(rawText: string): LivingThingIdentificat
     categoria,
     nombreComun: 'Sin identificar',
     tipoEspecifico: 'No disponible',
+    descripcion: 'No disponible',
     nombreCientifico: 'No disponible',
     distribucion: 'No disponible',
     habitat: 'No disponible',
@@ -316,8 +383,21 @@ export async function identifyLivingThingFromImage(params: {
   base64: string;
   mimeType: string;
 }): Promise<LivingThingIdentification> {
-  const prompt =
-    'Identifica este ser vivo en español. Responde SOLO con JSON: {nombre (nombre común), nombreCientifico, tipo: "planta"|"animal"|"hongo"|"insecto", descripcion (breve y clara), datoCurioso}. Incluye siempre nombre común, nombre científico, tipo, descripción y un dato curioso.';
+  const prompt = `Observa esta imagen. Identifica el ser vivo principal en español.
+Responde ÚNICAMENTE con un objeto JSON válido (sin texto ni markdown antes o después).
+Claves obligatorias y significado:
+- "nombreComun": nombre común conocido en español (si no está claro: la mejor etiqueta observable).
+- "nombreCientifico": género especie en cursiva opcional omitida; formato "Nombre especie" cuando sea posible, o cadena honesta tipo "Sin determinar desde la foto".
+- "tipo": uno de solo estas palabras: "planta" | "animal" | "hongo" | "insecto" (categoría general).
+- "tipoPlanta_o_grupo": SOLO si tipo es planta u hongo parecido: tipo fino fuera de esa palabra única — ej. suculenta, hierba ornamental, monocotiledónea, árbol, arbusto; para animales grupo similar (pez, ave, mamífero…). SIEMPRE rellénalo cuando sea planta/animal/insecto. Nunca escribas solo "planta" aquí.
+- "descripcion": 2–4 frases observables sobre forma, color, hábitos, hojas, flores si se ven — no debe ser solo la categoría ni una sola palabra genérica como "planta".
+- "habitat": medio natural habitual (selva tropical seca, jardín, maceta interior, zonas áridas, etc.). Sé concreto. Si parece ornamental en maceta díalo.
+- "distribucion": región donde habita típicamente (clima / países o "América tropical", etc.).
+- "peligrosidad": p. ej. "ninguna conocida si no se consume", pinchos como en aloe vera, irritación de jugo si aplica — o "no determinada".
+- "datoCurioso": una frase divertida y verificable relacionada al taxón inferido.
+
+Ejemplo válido conceptual (solo estructura, no inventes estos datos desde la foto):
+{"nombreComun":"...","nombreCientifico":"...","tipo":"planta","tipoPlanta_o_grupo":"suculenta herbácea perenne","descripcion":"...","habitat":"...","distribucion":"...","peligrosidad":"...","datoCurioso":"..."}`;
 
   const response = await callGemini(
     {
