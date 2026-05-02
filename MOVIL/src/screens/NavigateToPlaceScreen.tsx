@@ -265,7 +265,8 @@ export function NavigateToPlaceScreen() {
               destination={dest}
               plannedRoutePoints={routePoints}
               permissionOk={gpsOk}
-              followUserLocation
+              followUserLocation={routePoints.length < 2}
+              interactionMode={routePoints.length >= 2 ? 'route_navigation' : 'follow_zoom'}
             />
           </View>
         ) : (

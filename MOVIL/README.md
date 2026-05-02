@@ -99,6 +99,14 @@ El script instala dependencias y lanza el build en EAS Cloud. Cuando termine, de
 
 **Importante:** Ejecuta siempre desde `MOVIL` (donde está `app.json` y `package.json`). Si ejecutas `eas build` desde la raíz del repo, el build puede fallar.
 
+### Rutas en BD versus lugares naturales (Playas, volcanes…)
+
+Las **rutas** que vienen de tu base de datos se cargan con la URL configurada (`EXPO_PUBLIC_API_BASE_URL`, p. ej. Render): `GET /api/rutas` o por tipo.
+
+Los **lugares naturales** en la pantalla Rutas Seguras (playas, volcanes, cascadas, ríos/lagos cuando aplica, etc.) usan **`GET /api/geo/ecolugares`** cuando la API está configurada. Ese endpoint consulta OpenStreetMap (Overpass) **desde el servidor** (Render), con caché. Si esa petición falla, la app hace **respaldo** llamando directamente a instancias públicas de Overpass desde el teléfono.
+
+**Diagnóstico rápido:** Si fallan solo los “lugares” pero `https://<tu-host>/api/health` responde bien, el problema no es tanto “Render caído” como **Overpass o la red hacia ese servicio**. Comprueba logs del backend (`EcoPlaces`) y conectividad desde el mismo dispositivo/red.
+
 ---
 
 ## Notas opcionales

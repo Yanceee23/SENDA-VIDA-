@@ -101,8 +101,8 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     return {
       latitude: current.lat,
       longitude: current.lng,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
+      latitudeDelta: 0.12,
+      longitudeDelta: 0.12,
     };
   }, [current]);
 
@@ -467,8 +467,9 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           plannedRoutePoints={plannedRoutePoints}
           finalPoint={finishPoint}
           heading={heading}
-          followUserLocation
+          followUserLocation={false}
           permissionOk={gps.permissionGranted}
+          interactionMode="route_navigation"
         />
         <View style={styles.mapOverlay}>
           <Text style={styles.gpsLabel}>GPS activo</Text>

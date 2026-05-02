@@ -10,6 +10,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -68,7 +69,9 @@ public class EcoPlacesService {
             if (ce2 != null && now - ce2.storedAtMs() < TTL_MS) return ce2.items();
 
             List<Map<String, Object>> items = fetchFromOverpass(tipo);
-            cache.put(tipo, new CacheEntry(System.currentTimeMillis(), items));
+            if (!items.isEmpty()) {
+                cache.put(tipo, new CacheEntry(System.currentTimeMillis(), items));
+            }
             return items;
         }
     }
@@ -86,7 +89,7 @@ public class EcoPlacesService {
                     .bodyValue(body)
                     .retrieve()
                     .bodyToMono(String.class)
-                    .block();
+                    .block(Duration.ofMinutes(4));
 
             Map<String, Object> json = mapper.readValue(raw, Map.class);
             List<Map<String, Object>> elements = (List<Map<String, Object>>) json.getOrDefault("elements", Collections.emptyList());
@@ -100,8 +103,7 @@ public class EcoPlacesService {
                 Map<String, Object> tags = (Map<String, Object>) el.get("tags");
                 if (tags == null || tags.isEmpty()) continue;
 
-                String name = firstString(tags, "name:es", "name");
-                if (name == null || name.isBlank()) continue;
+                String name = displayName(tipo, idObj, tags);
 
                 Double lat = null;
                 Double lng = null;
@@ -149,7 +151,7 @@ public class EcoPlacesService {
     }
 
     private static String buildOverpassQueryForElSalvador(String tipo) {
-        // Importante: filtramos por El Salvador (ISO=SV) y exigimos [name] para reducir volumen.
+        // Por SV; rios/lagos/parques suelen omitir nombre en OSM (no usar ["name"] ahí).
         String selectors = switch (tipo) {
             case "playas" -> """
                 node["natural"="beach"]["name"](area.a);
@@ -157,21 +159,18 @@ public class EcoPlacesService {
                 relation["natural"="beach"]["name"](area.a);
                 """;
             case "rios" -> """
-                way["waterway"="river"]["name"](area.a);
-                relation["waterway"="river"]["name"](area.a);
-                way["waterway"="riverbank"]["name"](area.a);
-                relation["waterway"="riverbank"]["name"](area.a);
+                way["waterway"~"^(river|stream)$"]["name"](area.a);
+                way["waterway"~"^(river|stream)$"]["name:es"](area.a);
+                way["waterway"~"^(river|stream)$"]["ref"](area.a);
                 """;
             case "lagos" -> """
-                way["natural"="water"]["water"="lake"]["name"](area.a);
-                relation["natural"="water"]["water"="lake"]["name"](area.a);
+                way["natural"="water"]["water"="lake"](area.a);
+                relation["natural"="water"]["water"="lake"](area.a);
                 """;
             case "parques" -> """
-                node["leisure"="park"]["name"](area.a);
-                way["leisure"="park"]["name"](area.a);
-                relation["leisure"="park"]["name"](area.a);
-                way["boundary"="protected_area"]["name"](area.a);
-                relation["boundary"="protected_area"]["name"](area.a);
+                node["leisure"~"^(park|nature_reserve)$"](area.a);
+                way["leisure"~"^(park|nature_reserve)$"](area.a);
+                relation["boundary"="protected_area"](area.a);
                 """;
             case "volcanes" -> """
                 node["natural"="volcano"]["name"](area.a);
@@ -183,11 +182,26 @@ public class EcoPlacesService {
                 way["natural"="peak"]["name"](area.a);
                 relation["natural"="peak"]["name"](area.a);
                 """;
+            case "cascadas" -> """
+                node["waterway"="waterfall"]["name"](area.a);
+                way["waterway"="waterfall"]["name"](area.a);
+                relation["waterway"="waterfall"]["name"](area.a);
+                """;
+            case "montanas-parques" -> """
+                node["natural"="peak"]["name"](area.a);
+                way["natural"="peak"]["name"](area.a);
+                relation["natural"="peak"]["name"](area.a);
+                node["leisure"="nature_reserve"]["name"](area.a);
+                way["leisure"="nature_reserve"]["name"](area.a);
+                relation["leisure"="nature_reserve"]["name"](area.a);
+                way["boundary"="protected_area"]["name"](area.a);
+                relation["boundary"="protected_area"]["name"](area.a);
+                """;
             default -> "";
         };
 
         return """
-            [out:json][timeout:25];
+            [out:json][timeout:180];
             area["ISO3166-1"="SV"][admin_level=2]->.a;
             (
             %s
@@ -205,6 +219,7 @@ public class EcoPlacesService {
         if (t.equals("parque")) return "parques";
         if (t.equals("volcan")) return "volcanes";
         if (t.equals("montana")) return "montanas";
+        if (t.equals("cascada")) return "cascadas";
 
         // Default si viene vacío o desconocido
         if (t.isBlank()) return "playas";
@@ -226,6 +241,25 @@ public class EcoPlacesService {
             }
         }
         return null;
+    }
+
+    /** Ríos/parques sin name:* muestran un label sintético para listados */
+    private static String displayName(String tipo, Object idObj, Map<String, Object> tags) {
+        String n = firstString(tags, "name:es", "name");
+        if (n != null && !n.isBlank()) return n;
+        String id = String.valueOf(idObj);
+        return switch (tipo) {
+            case "rios" -> {
+                String ref = firstString(tags, "ref");
+                yield ref != null ? "Río " + ref : "Río #" + id;
+            }
+            case "lagos" -> "Lago #" + id;
+            case "parques" -> {
+                String pc = firstString(tags, "protect_class");
+                yield pc != null ? "Zona #" + id + " (" + pc + ')' : "Parque o zona #" + id;
+            }
+            default -> "Lugar #" + id;
+        };
     }
 }
 

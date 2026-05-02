@@ -53,7 +53,8 @@ export const STORAGE_KEYS = {
   eventReminders: 'SV_EVENT_REMINDERS_V1',
   pendingInvite: 'SV_PENDING_INVITE_V1',
   statsPrefix: 'stats_',
-  overpassCachePrefix: 'SV_OVERPASS_',
+  /** V2: invalide caches antiguos (p.ej. listas vacías guardadas durante 24h). */
+  overpassCachePrefix: 'SV_OVERPASS_V2_',
   lastRouteAdvice: 'SV_LAST_ROUTE_ADVICE',
 };
 

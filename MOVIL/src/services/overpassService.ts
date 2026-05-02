@@ -1,7 +1,15 @@
 import { STORAGE_KEYS } from '../config';
 import { getJson, setJson } from './storage';
 
-type PlaceCategory = 'volcanes' | 'playas' | 'cascadas' | 'montanas-parques' | 'montanas' | 'parques';
+export type PlaceCategory =
+  | 'volcanes'
+  | 'playas'
+  | 'cascadas'
+  | 'montanas-parques'
+  | 'montanas'
+  | 'parques'
+  | 'rios'
+  | 'lagos';
 
 type OverpassElement = {
   type?: string;
@@ -32,40 +40,64 @@ export type OverpassPlace = {
 
 const BBOX = '(12.0,-90.2,14.5,-87.5)';
 const TTL_24H_MS = 24 * 60 * 60 * 1000;
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+
+const OVERPASS_URLS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://lz4.overpass-api.de/api/interpreter',
+] as const;
+
+const FETCH_TIMEOUT_MS = 120_000;
+const CLIENT_USER_ERROR = 'No pudimos consultar lugares naturales en este momento.';
 
 function queryByCategory(category: PlaceCategory): string {
   switch (category) {
     case 'volcanes':
-      return `[out:json];
+      return `[out:json][timeout:25];
 (node["natural"="volcano"]${BBOX};
  way["natural"="volcano"]${BBOX};);
-out body;`;
+out center;`;
     case 'playas':
-      return `[out:json];
+      return `[out:json][timeout:25];
 (node["natural"="beach"]${BBOX};
  way["natural"="beach"]${BBOX};);
-out body;`;
+out center;`;
     case 'cascadas':
-      return `[out:json];
-(node["waterway"="waterfall"]${BBOX};);
-out body;`;
+      return `[out:json][timeout:25];
+(node["waterway"="waterfall"]${BBOX};
+ way["waterway"="waterfall"]${BBOX};);
+out center;`;
     case 'montanas':
-      return `[out:json];
+      return `[out:json][timeout:25];
 (node["natural"="peak"]${BBOX};);
 out body;`;
     case 'parques':
-      return `[out:json];
-(way["boundary"="protected_area"]${BBOX};
- node["leisure"="nature_reserve"]${BBOX};);
-out body;`;
+      // Relaciones país + parques locales; menos fragmentos masivos que ríos genéricos
+      return `[out:json][timeout:180];
+(
+relation["boundary"="protected_area"]${BBOX};
+node["leisure"~"^(park|nature_reserve)$"]${BBOX};
+way["leisure"~"^(park|nature_reserve)$"]${BBOX};
+);
+out center;`;
+    case 'rios':
+      // Sin todo el grafo nacional de tramos-anónimos (rompe Overpass/red). Prioridad: nombre/ref buscables.
+      return `[out:json][timeout:180];
+(
+way["waterway"~"^(river|stream)$"]["name"]${BBOX};
+way["waterway"~"^(river|stream)$"]["name:es"]${BBOX};
+way["waterway"~"^(river|stream)$"]["ref"]${BBOX};
+);
+out center;`;
+    case 'lagos':
+      return `[out:json][timeout:25];
+way["natural"="water"]["water"="lake"]${BBOX};
+out center;`;
     case 'montanas-parques':
-    default:
-      return `[out:json];
+      return `[out:json][timeout:25];
 (node["natural"="peak"]${BBOX};
  way["boundary"="protected_area"]${BBOX};
  node["leisure"="nature_reserve"]${BBOX};);
-out body;`;
+out center;`;
   }
 }
 
@@ -90,30 +122,56 @@ function mapElement(element: OverpassElement, category: PlaceCategory): Overpass
   };
 }
 
-async function requestOverpass(query: string): Promise<OverpassResponse> {
-  const response = await fetch(OVERPASS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-  if (!response.ok) {
-    throw new Error('No pudimos consultar lugares naturales en este momento.');
+async function fetchOverpassOnce(url: string, query: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
   }
-  return (await response.json()) as OverpassResponse;
+}
+
+async function requestOverpass(query: string): Promise<OverpassResponse> {
+  for (const url of OVERPASS_URLS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await fetchOverpassOnce(url, query);
+        if (!response.ok) continue;
+        return (await response.json()) as OverpassResponse;
+      } catch {
+        /* siguiente intento */
+      }
+    }
+  }
+  throw new Error(CLIENT_USER_ERROR);
 }
 
 export async function getPlacesByCategory(category: PlaceCategory): Promise<OverpassPlace[]> {
   const cacheKey = getCacheKey(category);
   const cached = await getJson<CachePayload>(cacheKey);
   const now = Date.now();
-  if (cached?.items && now - Number(cached.storedAt ?? 0) < TTL_24H_MS) {
-    return cached.items;
+  // [] cuenta como truthy en JS: antes se "congelaban" rutas sin resultados durante 24h.
+  const cachedRows = cached?.items;
+  if (
+    Array.isArray(cachedRows) &&
+    cachedRows.length > 0 &&
+    now - Number(cached?.storedAt ?? 0) < TTL_24H_MS
+  ) {
+    return cachedRows;
   }
 
   const query = queryByCategory(category);
   const raw = await requestOverpass(query);
   const elements = Array.isArray(raw.elements) ? raw.elements : [];
   const mapped = elements.map((e) => mapElement(e, category)).filter((e): e is OverpassPlace => e != null);
-  await setJson(cacheKey, { storedAt: now, items: mapped });
+  if (mapped.length > 0) {
+    await setJson(cacheKey, { storedAt: now, items: mapped });
+  }
   return mapped;
 }

@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
 import type { LatLng } from '../utils/gps';
+import type { MapInteractionMode } from './LiveMapNative';
 import { OfflineSimpleMap } from './OfflineSimpleMap';
 
 type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -18,6 +19,7 @@ export type LiveMapProps = {
   heading?: number | null;
   followUserLocation?: boolean;
   permissionOk: boolean;
+  interactionMode?: MapInteractionMode;
 };
 
 const LazyNativeLiveMap = React.lazy(() =>
@@ -56,6 +58,7 @@ export function LiveMap({
   heading,
   followUserLocation,
   permissionOk,
+  interactionMode = 'follow_zoom',
 }: LiveMapProps) {
   if (!region) {
     return (
@@ -106,6 +109,7 @@ export function LiveMap({
           heading={heading ?? null}
           followUserLocation={followUserLocation ?? true}
           permissionOk={permissionOk}
+          interactionMode={interactionMode}
         />
       </Suspense>
     </MapErrorBoundary>

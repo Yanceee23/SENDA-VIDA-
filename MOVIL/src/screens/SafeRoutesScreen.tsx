@@ -16,7 +16,8 @@ import type { AppStackParamList } from '../types/navigation';
 import { fontFamily } from '../theme/typography';
 import { distanciaKm, type LatLng } from '../utils/gps';
 import { getOsrmRoute } from '../services/osrmService';
-import { getPlacesByCategory, type OverpassPlace } from '../services/overpassService';
+import { fetchEcoPlacesFromBackend } from '../services/ecoPlacesBackendService';
+import { getPlacesByCategory, type OverpassPlace, type PlaceCategory } from '../services/overpassService';
 
 type Ruta = {
   id: number;
@@ -46,6 +47,21 @@ type EcoPlace = {
   lng: number;
   descripcion?: string;
 };
+
+function uiTipoToPlaceCategory(raw: string): PlaceCategory | null {
+  const k = String(raw ?? '').toLowerCase().trim();
+  const map: Record<string, PlaceCategory> = {
+    volcanes: 'volcanes',
+    playas: 'playas',
+    cascadas: 'cascadas',
+    'montanas-parques': 'montanas-parques',
+    montanas: 'montanas',
+    parques: 'parques',
+    rios: 'rios',
+    lagos: 'lagos',
+  };
+  return map[k] ?? null;
+}
 
 const tipos = [
   { key: 'todas', label: 'Todas', emoji: '🧭' },
@@ -154,11 +170,22 @@ export function SafeRoutesScreen() {
       else setPlacesLoadingMore(true);
       if (reset) setPlacesError(null);
 
-      const category =
-        effectiveTipo === 'montanas' || effectiveTipo === 'parques'
-          ? (effectiveTipo as 'montanas' | 'parques')
-          : (effectiveTipo as 'volcanes' | 'playas' | 'cascadas' | 'montanas-parques');
-      const res = await getPlacesByCategory(category);
+      const category = uiTipoToPlaceCategory(effectiveTipo);
+      if (!category) return;
+
+      const base = (settings.apiBaseUrl ?? '').trim();
+      let res: OverpassPlace[];
+      if (base) {
+        try {
+          const fromApi = await fetchEcoPlacesFromBackend(base, category, user?.token);
+          // Backend puede devolver 200 + [] cuando OSM no trae nombre; Overpass cliente (bbox) sí rellena.
+          res = fromApi.length > 0 ? fromApi : await getPlacesByCategory(category);
+        } catch {
+          res = await getPlacesByCategory(category);
+        }
+      } else {
+        res = await getPlacesByCategory(category);
+      }
       const filtered = res.filter((p) => p.nombre.toLowerCase().includes(placeQuery.trim().toLowerCase()));
       const mapped: EcoPlace[] = filtered.map((x: OverpassPlace) => {
         const parts = x.id.split(':');
@@ -201,7 +228,7 @@ export function SafeRoutesScreen() {
 
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, tipo, placeQuery, settings.apiBaseUrl]);
+  }, [mode, tipo, placeQuery, settings.apiBaseUrl, user?.token]);
 
   useEffect(() => {
     if (!showPlacesView) return;
