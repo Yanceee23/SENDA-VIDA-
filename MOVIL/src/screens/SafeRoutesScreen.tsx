@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { DrawerActions, useNavigation } from '@react-navigation/native';
@@ -96,6 +96,7 @@ export function SafeRoutesScreen() {
   const [etaMinByPlace, setEtaMinByPlace] = useState<Record<string, number>>({});
   const [myPos, setMyPos] = useState<LatLng | null>(null);
   const [gpsOk, setGpsOk] = useState(false);
+  const placesReqSeq = useRef(0);
 
   const isEcoTipo = (t: string) => ['rios', 'lagos', 'playas', 'volcanes', 'montanas', 'parques', 'cascadas'].includes(String(t ?? '').toLowerCase().trim());
   const showPlacesView = mode === 'lugares' || (mode === 'rutas' && isEcoTipo(tipo));
@@ -164,6 +165,7 @@ export function SafeRoutesScreen() {
     if (placesLoading || placesLoadingMore) return;
     const effectiveTipo = String(tipoReq ?? '').toLowerCase().trim();
     if (!effectiveTipo || effectiveTipo === 'todas') return;
+    const reqId = ++placesReqSeq.current;
 
     try {
       if (reset) setPlacesLoading(true);
@@ -178,14 +180,16 @@ export function SafeRoutesScreen() {
       if (base) {
         try {
           const fromApi = await fetchEcoPlacesFromBackend(base, category, user?.token);
-          // Backend puede devolver 200 + [] cuando OSM no trae nombre; Overpass cliente (bbox) sí rellena.
-          res = fromApi.length > 0 ? fromApi : await getPlacesByCategory(category);
+          // Prioridad backend: [] es válido y no debe forzar fallback.
+          res = fromApi;
         } catch {
+          // Fallback solo en error real de red/servidor.
           res = await getPlacesByCategory(category);
         }
       } else {
         res = await getPlacesByCategory(category);
       }
+      if (reqId !== placesReqSeq.current) return;
       const filtered = res.filter((p) => p.nombre.toLowerCase().includes(placeQuery.trim().toLowerCase()));
       const mapped: EcoPlace[] = filtered.map((x: OverpassPlace) => {
         const parts = x.id.split(':');
@@ -204,9 +208,11 @@ export function SafeRoutesScreen() {
       setPlacesPage(0);
       setPlaces(mapped);
     } catch (e: any) {
+      if (reqId !== placesReqSeq.current) return;
       if (reset) setPlaces([]);
       if (reset) setPlacesError(String(e?.message ?? 'No se pudieron cargar lugares.'));
     } finally {
+      if (reqId !== placesReqSeq.current) return;
       setPlacesLoading(false);
       setPlacesLoadingMore(false);
     }
@@ -366,6 +372,7 @@ export function SafeRoutesScreen() {
   if (showPlacesView) {
     const effectiveTipo = tipo === 'todas' ? 'playas' : tipo;
     const titulo = tipos.find((x) => x.key === effectiveTipo)?.label ?? effectiveTipo;
+    const hasSearch = placeQuery.trim().length > 0;
 
     return (
       <Screen contentStyle={{ padding: 0, gap: 0 }}>
@@ -495,7 +502,11 @@ export function SafeRoutesScreen() {
           }}
           ListFooterComponent={placesLoadingMore ? <ActivityIndicator /> : null}
           ListEmptyComponent={
-            !placesLoading ? <Text style={styles.emptyText}>{placesError ? 'Sin datos (error de conexión)' : 'Sin resultados.'}</Text> : null
+            !placesLoading ? (
+              <Text style={styles.emptyText}>
+                {placesError ? 'Sin datos (error de conexión)' : hasSearch ? 'No hay coincidencias para tu búsqueda.' : 'Sin resultados.'}
+              </Text>
+            ) : null
           }
         />
       </Screen>

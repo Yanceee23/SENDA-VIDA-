@@ -159,9 +159,8 @@ public class EcoPlacesService {
                 relation["natural"="beach"]["name"](area.a);
                 """;
             case "rios" -> """
-                way["waterway"~"^(river|stream)$"]["name"](area.a);
-                way["waterway"~"^(river|stream)$"]["name:es"](area.a);
-                way["waterway"~"^(river|stream)$"]["ref"](area.a);
+                way["waterway"~"^(river|stream)$"](area.a);
+                relation["waterway"~"^(river|stream)$"](area.a);
                 """;
             case "lagos" -> """
                 way["natural"="water"]["water"="lake"](area.a);

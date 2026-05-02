@@ -14,6 +14,7 @@ export type LiveMapNativeProps = {
   region: Region;
   points: LatLng[];
   current: LatLng | null;
+  startPoint?: LatLng | null;
   destination?: LatLng | null;
   plannedRoutePoints?: LatLng[];
   finalPoint?: LatLng | null;
@@ -58,6 +59,7 @@ export default function LiveMapNative({
   region,
   points,
   current,
+  startPoint,
   destination,
   plannedRoutePoints,
   finalPoint,
@@ -74,6 +76,7 @@ export default function LiveMapNative({
   const [mapReady, setMapReady] = useState(false);
   const autoFitRanForSig = useRef<string>('');
   const [routeNavUserMoved, setRouteNavUserMoved] = useState(false);
+  const [navFollowUser, setNavFollowUser] = useState(true);
 
   const navMode = interactionMode === 'route_navigation';
 
@@ -95,7 +98,7 @@ export default function LiveMapNative({
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: points.map((p) => [p.lng, p.lat]),
+        coordinates: (points.length > 260 ? points.slice(-260) : points).map((p) => [p.lng, p.lat]),
       },
     }),
     [points]
@@ -142,10 +145,12 @@ export default function LiveMapNative({
   useEffect(() => {
     if (!navMode) return;
     autoFitRanForSig.current = '';
+    setRouteNavUserMoved(false);
+    setNavFollowUser(true);
   }, [routeSig, navMode]);
 
   useEffect(() => {
-    if (!navMode || !mapReady) return;
+    if (!navMode || !mapReady || routeNavUserMoved) return;
 
     const run = () => {
       const pts = collectNavPoints();
@@ -157,27 +162,23 @@ export default function LiveMapNative({
 
     const tid = setTimeout(run, 400);
     return () => clearTimeout(tid);
-  }, [navMode, mapReady, routeSig, collectNavPoints, fitRouteFrame]);
+  }, [navMode, mapReady, routeSig, routeNavUserMoved, collectNavPoints, fitRouteFrame]);
 
-  useEffect(() => {
-    if (!navMode || !mapReady || routeNavUserMoved) return;
+  const markUserMovedMap = useCallback(() => {
+    if (!navMode) return;
+    setRouteNavUserMoved(true);
+    setNavFollowUser(false);
+  }, [navMode]);
 
-    const id = setInterval(() => {
-      const pts = collectNavPoints();
-      if (pts.length < 2 || !cameraRef.current) return;
-      fitRouteFrame(4200);
-    }, 48000);
-
-    return () => clearInterval(id);
-  }, [navMode, mapReady, routeNavUserMoved, collectNavPoints, fitRouteFrame, current?.lat, current?.lng]);
-
-  const onRegionDidChange = useCallback(
+  const onRegionUserChange = useCallback(
     (feature: GeoJSON.Feature<GeoJSON.Point, { isUserInteraction?: boolean }>) => {
       if (!navMode) return;
       const isUser = Boolean(feature.properties?.isUserInteraction);
-      if (isUser) setRouteNavUserMoved(true);
+      if (isUser) {
+        markUserMovedMap();
+      }
     },
-    [navMode]
+    [markUserMovedMap, navMode]
   );
 
   const zoom = deltaToZoom(region.latitudeDelta);
@@ -186,6 +187,8 @@ export default function LiveMapNative({
     interactionMode === 'follow_zoom' && Boolean(followUserLocation && permissionOk);
 
   const cameraHeading = navMode ? 0 : Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const navFollowZoom = 16;
+  const displayStartPoint = startPoint ?? points[0] ?? plannedRoutePoints?.[0] ?? null;
 
   const navDefaultSettings = useMemo(
     () => ({
@@ -208,7 +211,8 @@ export default function LiveMapNative({
         pitchEnabled={!navMode}
         rotateEnabled
         onDidFinishLoadingMap={() => setMapReady(true)}
-        onRegionDidChange={onRegionDidChange as any}
+        onRegionWillChange={onRegionUserChange as any}
+        onRegionDidChange={onRegionUserChange as any}
       >
         <MapLibreGL.Camera
           ref={cameraRef}
@@ -216,8 +220,8 @@ export default function LiveMapNative({
           followUserLocation={useNativeFollow}
           followUserMode={UserTrackingMode.FollowWithHeading}
           followZoomLevel={zoom}
-          centerCoordinate={navMode ? undefined : [region.longitude, region.latitude]}
-          zoomLevel={navMode ? undefined : zoom}
+          centerCoordinate={navMode || useNativeFollow ? undefined : [region.longitude, region.latitude]}
+          zoomLevel={navMode || useNativeFollow ? undefined : zoom}
           heading={cameraHeading}
         />
 
@@ -248,8 +252,8 @@ export default function LiveMapNative({
           </MapLibreGL.ShapeSource>
         ) : null}
 
-        {points[0] ? (
-          <MapLibreGL.PointAnnotation id="start-marker" coordinate={[points[0].lng, points[0].lat]}>
+        {displayStartPoint ? (
+          <MapLibreGL.PointAnnotation id="start-marker" coordinate={[displayStartPoint.lng, displayStartPoint.lat]}>
             <View style={styles.startDot} />
           </MapLibreGL.PointAnnotation>
         ) : null}
@@ -269,12 +273,32 @@ export default function LiveMapNative({
 
       {navMode ? (
         <View style={styles.navFabWrap} pointerEvents="box-none">
+          {routeNavUserMoved ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Volver a seguir mi ubicación"
+              style={({ pressed }) => [styles.navFab, styles.navFabSecondary, pressed && styles.navFabPressed]}
+              onPress={() => {
+                if (current) {
+                  cameraRef.current?.setCamera({
+                    centerCoordinate: [current.lng, current.lat],
+                    zoomLevel: navFollowZoom,
+                    animationDuration: 650,
+                  });
+                }
+                setRouteNavUserMoved(false);
+              }}
+            >
+              <Text style={styles.navFabText}>🎯 Recentrar</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Ver ruta completa y volver a seguir el mapa con la ruta"
+            accessibilityLabel="Ver ruta completa"
             style={({ pressed }) => [styles.navFab, pressed && styles.navFabPressed]}
             onPress={() => {
-              setRouteNavUserMoved(false);
+              setNavFollowUser(false);
+              setRouteNavUserMoved(true);
               fitRouteFrame(3800);
             }}
           >
@@ -329,6 +353,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   navFabPressed: { opacity: 0.92 },
+  navFabSecondary: {
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(5,150,105,0.92)',
+  },
   navFabText: {
     color: '#F8FAFC',
     fontWeight: '900',

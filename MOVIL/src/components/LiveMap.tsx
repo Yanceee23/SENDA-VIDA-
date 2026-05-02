@@ -13,6 +13,7 @@ export type LiveMapProps = {
   region: Region | undefined;
   points: LatLng[];
   current: LatLng | null;
+  startPoint?: LatLng | null;
   destination?: LatLng | null;
   plannedRoutePoints?: LatLng[];
   finalPoint?: LatLng | null;
@@ -28,6 +29,7 @@ const LazyNativeLiveMap = React.lazy(() =>
       region: Region;
       points: LatLng[];
       current: LatLng | null;
+      startPoint?: LatLng | null;
       destination?: LatLng | null;
       plannedRoutePoints?: LatLng[];
     }) {
@@ -52,6 +54,7 @@ export function LiveMap({
   region,
   points,
   current,
+  startPoint,
   destination,
   plannedRoutePoints,
   finalPoint,
@@ -103,6 +106,7 @@ export function LiveMap({
           region={region}
           points={points}
           current={current}
+          startPoint={startPoint ?? null}
           destination={destination ?? null}
           plannedRoutePoints={plannedRoutePoints ?? []}
           finalPoint={finalPoint ?? null}

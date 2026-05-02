@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { useRoute } from '@react-navigation/native';
@@ -40,6 +40,14 @@ function toNum(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function resultKey(item: SearchResult | null): string {
+  if (!item) return '';
+  const lat = toNum(item.lat);
+  const lng = toNum(item.lng);
+  const name = String(item.display_name ?? '').trim();
+  return `${name}:${lat ?? 'x'}:${lng ?? 'x'}`;
+}
+
 export function NavigateToPlaceScreen() {
   const { settings } = useSettings();
   const route = useRoute<any>();
@@ -49,6 +57,7 @@ export function NavigateToPlaceScreen() {
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState<SearchResult | null>(null);
+  const [selectedKey, setSelectedKey] = useState('');
 
   const [gpsOk, setGpsOk] = useState(false);
   const [me, setMe] = useState<LatLng | null>(null);
@@ -71,12 +80,13 @@ export function NavigateToPlaceScreen() {
     if (lat == null || lng == null) return;
 
     const name = String(params.destNombre ?? 'Destino');
-    setSelected({ display_name: name, lat, lng });
+    const next = { display_name: name, lat, lng };
+    setSelected(next);
+    setSelectedKey(resultKey(next));
     setQuery(name);
     setResults([]);
     setRoutePoints([]);
     setRouteMeta(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.destLat, params.destLng, params.destNombre]);
 
   useEffect(() => {
@@ -98,19 +108,6 @@ export function NavigateToPlaceScreen() {
     })();
   }, []);
 
-  useEffect(() => {
-    const lat = toNum(params.destLat);
-    const lng = toNum(params.destLng);
-    if (lat == null || lng == null) return;
-    if (!me) return;
-    if (!dest) return;
-    if (routing) return;
-    if (routePoints.length) return;
-
-    void onRoute();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.lat, me?.lng, dest?.lat, dest?.lng, profile]);
-
   const region = useMemo(() => {
     const base = me ?? dest;
     if (!base) return undefined;
@@ -123,6 +120,7 @@ export function NavigateToPlaceScreen() {
     try {
       setSearching(true);
       setSelected(null);
+      setSelectedKey('');
       setRoutePoints([]);
       setRouteMeta(null);
       const lugares = await buscarLugar(q);
@@ -139,7 +137,7 @@ export function NavigateToPlaceScreen() {
     }
   };
 
-  const onRoute = async () => {
+  const onRoute = useCallback(async () => {
     if (!me) return Alert.alert('Ruta', 'Activa el GPS del celular para calcular la ruta.');
     if (!dest) return Alert.alert('Ruta', 'Selecciona un destino.');
     try {
@@ -153,7 +151,7 @@ export function NavigateToPlaceScreen() {
           endLng: dest.lng,
           profile,
         })}`,
-        { method: 'GET', timeoutMs: 240000 }
+        { method: 'GET', timeoutMs: 90_000 }
       );
       if (res?.error) {
         Alert.alert('Ruta', String(res.error));
@@ -170,7 +168,19 @@ export function NavigateToPlaceScreen() {
     } finally {
       setRouting(false);
     }
-  };
+  }, [dest, me, profile, settings.apiBaseUrl]);
+
+  useEffect(() => {
+    const lat = toNum(params.destLat);
+    const lng = toNum(params.destLng);
+    if (lat == null || lng == null) return;
+    if (!me) return;
+    if (!dest) return;
+    if (routing) return;
+    if (routePoints.length) return;
+
+    void onRoute();
+  }, [dest, me, onRoute, params.destLat, params.destLng, profile, routePoints.length, routing]);
 
   const formatKm = (m?: number) => (m == null || !Number.isFinite(m) ? '—' : `${(m / 1000).toFixed(2)} km`);
   const formatMin = (s?: number) => (s == null || !Number.isFinite(s) ? '—' : `${Math.max(1, Math.round(s / 60))} min`);
@@ -223,11 +233,14 @@ export function NavigateToPlaceScreen() {
         ) : results.length ? (
           <View style={{ gap: 10 }}>
             {results.map((r, idx) => {
-              const isSel = selected === r;
+              const isSel = selectedKey === resultKey(r);
               return (
                 <Pressable
                   key={`${String(r.display_name ?? 'res')}-${idx}`}
-                  onPress={() => setSelected(r)}
+                  onPress={() => {
+                    setSelected(r);
+                    setSelectedKey(resultKey(r));
+                  }}
                   style={[styles.resultRow, isSel && { borderColor: colors.primary, backgroundColor: colors.primarySoft }]}
                   accessibilityRole="button"
                 >

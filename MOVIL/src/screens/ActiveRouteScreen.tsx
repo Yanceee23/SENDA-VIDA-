@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Linking from 'expo-linking';
@@ -31,6 +31,31 @@ type ContactOption = {
 };
 
 type ActivityStartResponse = { id: number };
+type ExplorerEnvResponse = {
+  especies?: {
+    flora?: Array<{ nombre?: string }>;
+    floraTotal?: number;
+    fauna?: Array<{ nombre?: string }>;
+    faunaTotal?: number;
+  };
+};
+
+const REROUTE_THROTTLE_MS = 25_000;
+const REROUTE_PROGRESS_WINDOW_MS = 28_000;
+const OFF_ROUTE_THRESHOLD_KM = 0.05;
+const MIN_PROGRESS_KM = 0.01;
+const MAX_TRAIL_POINTS = 600;
+
+function minDistanceToRouteKm(point: { lat: number; lng: number }, routePoints: Array<{ lat: number; lng: number }>): number {
+  if (routePoints.length === 0) return Number.POSITIVE_INFINITY;
+  let min = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < routePoints.length; i++) {
+    const p = routePoints[i];
+    const d = haversine(point.lat, point.lng, p.lat, p.lng);
+    if (d < min) min = d;
+  }
+  return min;
+}
 
 const EMERGENCIAS = [
   { nombre: '🚔 Policía Nacional Civil', numero: '911' },
@@ -64,6 +89,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       : null;
 
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
+  const [startPoint, setStartPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [heading, setHeading] = useState<number | null>(null);
   const [points, setPoints] = useState<Array<{ lat: number; lng: number }>>([]);
   const [plannedRoutePoints, setPlannedRoutePoints] = useState<Array<{ lat: number; lng: number }>>([]);
@@ -88,6 +114,9 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     condicion: 'Sin datos',
     temperaturaC: null,
   });
+  const reroutingRef = useRef(false);
+  const lastRerouteAtRef = useRef(0);
+  const progressRef = useRef<{ at: number; distToDestKm: number } | null>(null);
 
   const calorias = useMemo(() => {
     const MET = tipo === 'ciclismo' ? 8.0 : 3.5;
@@ -140,7 +169,58 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     setRobotModalVisible(true);
   };
 
-  const onGpsUpdate = (point: GPSPoint) => {
+  const recalculateRoute = useCallback(
+    async (from: { lat: number; lng: number }) => {
+      if (!destination || reroutingRef.current) return;
+      const now = Date.now();
+      if (now - lastRerouteAtRef.current < REROUTE_THROTTLE_MS) return;
+      reroutingRef.current = true;
+      lastRerouteAtRef.current = now;
+      try {
+        const routeData = await getOsrmRoute({
+          mode,
+          startLat: from.lat,
+          startLng: from.lng,
+          endLat: destination.lat,
+          endLng: destination.lng,
+        });
+        setPlannedRoutePoints(routeData.geometry);
+        setPlannedDurationMin(routeData.durationMin);
+      } catch {
+        // Reintento silencioso: no interrumpir navegación por fallo temporal.
+      } finally {
+        reroutingRef.current = false;
+      }
+    },
+    [destination, mode]
+  );
+
+  const maybeRecalculateRoute = useCallback(
+    (next: { lat: number; lng: number }) => {
+      if (!destination || paused) return;
+      const now = Date.now();
+      const distToDest = haversine(next.lat, next.lng, destination.lat, destination.lng);
+      const distToPath = minDistanceToRouteKm(next, plannedRoutePoints);
+      const offRoute = Number.isFinite(distToPath) && distToPath > OFF_ROUTE_THRESHOLD_KM;
+
+      const prevProgress = progressRef.current;
+      const staleProgress =
+        !!prevProgress &&
+        now - prevProgress.at >= REROUTE_PROGRESS_WINDOW_MS &&
+        distToDest > prevProgress.distToDestKm - MIN_PROGRESS_KM;
+
+      if (!prevProgress || now - prevProgress.at >= REROUTE_PROGRESS_WINDOW_MS) {
+        progressRef.current = { at: now, distToDestKm: distToDest };
+      }
+
+      if (offRoute || staleProgress) {
+        void recalculateRoute(next);
+      }
+    },
+    [destination, paused, plannedRoutePoints, recalculateRoute]
+  );
+
+  const onGpsUpdate = useCallback((point: GPSPoint) => {
     if (paused) return;
     const next = { lat: point.lat, lng: point.lng };
     setHeading(point.heading);
@@ -151,12 +231,19 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       const delta = haversine(last.lat, last.lng, next.lat, next.lng);
       if (delta >= 0.01) {
         setDistKm((d) => d + delta);
-        return [...prev, next];
+        const appended = [...prev, next];
+        return appended.length > MAX_TRAIL_POINTS ? appended.slice(-MAX_TRAIL_POINTS) : appended;
       }
       return prev;
     });
-    if (startedAt) updateTimer(startedAt);
-  };
+    maybeRecalculateRoute(next);
+  }, [maybeRecalculateRoute, paused]);
+
+  useEffect(() => {
+    reroutingRef.current = false;
+    lastRerouteAtRef.current = 0;
+    progressRef.current = null;
+  }, [destination?.lat, destination?.lng]);
 
   const buildEmergencyMessage = async (): Promise<string | null> => {
     try {
@@ -284,6 +371,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
 
       const start = { lat: initial.lat, lng: initial.lng };
       setCurrent(start);
+      setStartPoint(start);
       setHeading(initial.heading);
       setPoints([start]);
       const startTs = Date.now();
@@ -341,7 +429,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
 
   React.useEffect(() => {
     if (!startedAt || paused) return;
-    const id = setInterval(() => updateTimer(startedAt), 1000);
+    const id = setInterval(() => updateTimer(startedAt), 2000);
     return () => clearInterval(id);
   }, [startedAt, paused]);
 
@@ -401,9 +489,9 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       let faunaNombres: string[] = [];
 
       if (current) {
-        let envRes: { especies?: { flora?: { nombre?: string }[]; floraTotal?: number; fauna?: { nombre?: string }[]; faunaTotal?: number } } | null = null;
+        let envRes: ExplorerEnvResponse | null = null;
         if (baseUrl) {
-          const explorerPromise = apiRequest<typeof envRes>(
+          const explorerPromise = apiRequest<ExplorerEnvResponse>(
             baseUrl,
             `/explorer/explorar${toQuery({ lat: current.lat, lng: current.lng, nombre: route.params?.destNombre ?? 'Lugar visitado', tipo: 'parque' })}`,
             { method: 'POST', timeoutMs: 6000 }
@@ -463,11 +551,12 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           region={region}
           points={points}
           current={current}
+          startPoint={startPoint}
           destination={destination}
           plannedRoutePoints={plannedRoutePoints}
           finalPoint={finishPoint}
           heading={heading}
-          followUserLocation={false}
+          followUserLocation
           permissionOk={gps.permissionGranted}
           interactionMode="route_navigation"
         />

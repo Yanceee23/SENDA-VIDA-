@@ -71,21 +71,21 @@ out center;`;
 (node["natural"="peak"]${BBOX};);
 out body;`;
     case 'parques':
-      // Relaciones país + parques locales; menos fragmentos masivos que ríos genéricos
+      // Incluye parques y reservas aunque no tengan name:* en OSM.
       return `[out:json][timeout:180];
 (
 relation["boundary"="protected_area"]${BBOX};
+relation["leisure"~"^(park|nature_reserve)$"]${BBOX};
 node["leisure"~"^(park|nature_reserve)$"]${BBOX};
 way["leisure"~"^(park|nature_reserve)$"]${BBOX};
 );
 out center;`;
     case 'rios':
-      // Sin todo el grafo nacional de tramos-anónimos (rompe Overpass/red). Prioridad: nombre/ref buscables.
+      // No dependemos solo de name/ref: muchos ríos en OSM no tienen etiqueta de nombre.
       return `[out:json][timeout:180];
 (
-way["waterway"~"^(river|stream)$"]["name"]${BBOX};
-way["waterway"~"^(river|stream)$"]["name:es"]${BBOX};
-way["waterway"~"^(river|stream)$"]["ref"]${BBOX};
+way["waterway"~"^(river|stream)$"]${BBOX};
+relation["waterway"~"^(river|stream)$"]${BBOX};
 );
 out center;`;
     case 'lagos':

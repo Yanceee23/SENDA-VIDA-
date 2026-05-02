@@ -49,7 +49,7 @@ export function useGPS() {
         return null;
       }
       const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.Balanced,
         mayShowUserSettingsDialog: true,
       });
       const point: GPSPoint = {
@@ -81,9 +81,9 @@ export function useGPS() {
       try {
         watchSub.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 5000,
-            distanceInterval: 10,
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 10_000,
+            distanceInterval: 15,
             mayShowUserSettingsDialog: true,
           },
           (position) => {
