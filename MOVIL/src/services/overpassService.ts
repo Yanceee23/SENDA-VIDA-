@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from '../config';
 import { getJson, setJson } from './storage';
+import { normalizeLatLng } from '../utils/coordinates';
 
 export type PlaceCategory =
   | 'volcanes'
@@ -62,6 +63,14 @@ const FALLBACK_RIVERS_SV: OverpassPlace[] = [
   { id: 'fallback-river:sensunapan', nombre: 'Río Sensunapán', descripcion: 'Río del occidente de El Salvador', categoria: 'rios', lat: 13.71, lng: -89.72 },
 ];
 
+const FALLBACK_LAKES_SV: OverpassPlace[] = [
+  { id: 'fallback-lake:ilopango', nombre: 'Lago de Ilopango', descripcion: 'Lago ubicado entre San Salvador, Cuscatlán y La Paz', categoria: 'lagos', lat: 13.672, lng: -89.055 },
+  { id: 'fallback-lake:cerron-grande', nombre: 'Embalse Cerrón Grande', descripcion: 'Embalse del río Lempa', categoria: 'lagos', lat: 14.05, lng: -89.05 },
+  { id: 'fallback-lake:guija', nombre: 'Lago de Güija', descripcion: 'Lago compartido entre El Salvador y Guatemala', categoria: 'lagos', lat: 14.27, lng: -89.51 },
+  { id: 'fallback-lake:coatepeque', nombre: 'Lago de Coatepeque', descripcion: 'Lago volcánico de Santa Ana', categoria: 'lagos', lat: 13.864, lng: -89.545 },
+  { id: 'fallback-lake:olomega', nombre: 'Laguna de Olomega', descripcion: 'Laguna del oriente de El Salvador', categoria: 'lagos', lat: 13.316, lng: -88.06 },
+];
+
 function queryByCategory(category: PlaceCategory): string {
   switch (category) {
     case 'volcanes':
@@ -120,21 +129,20 @@ function getCacheKey(category: PlaceCategory): string {
 }
 
 function mapElement(element: OverpassElement, category: PlaceCategory): OverpassPlace | null {
-  const lat = Number(element.lat ?? element.center?.lat);
-  const lng = Number(element.lon ?? element.center?.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const point = normalizeLatLng({ lat: element.lat ?? element.center?.lat, lng: element.lon ?? element.center?.lon });
+  if (!point) return null;
   const tags = element.tags ?? {};
   const nombre =
     String(tags['name:es'] ?? tags.name ?? '').trim() ||
     (category === 'rios' ? `Río ${element.id ?? ''}` : `Lugar ${element.id ?? ''}`).trim();
   const descriptionParts = [tags.description, tags.tourism, tags.natural, tags.leisure, tags.waterway].filter(Boolean);
   return {
-    id: `${String(element.type ?? 'x')}:${String(element.id ?? `${lat},${lng}`)}`,
+    id: `${String(element.type ?? 'x')}:${String(element.id ?? `${point.lat},${point.lng}`)}`,
     nombre,
     descripcion: descriptionParts.length ? String(descriptionParts[0]) : 'Lugar natural en El Salvador',
     categoria: category,
-    lat,
-    lng,
+    lat: point.lat,
+    lng: point.lng,
   };
 }
 
@@ -188,6 +196,9 @@ export async function getPlacesByCategory(category: PlaceCategory): Promise<Over
   const mapped = elements.map((e) => mapElement(e, category)).filter((e): e is OverpassPlace => e != null);
   if (mapped.length === 0 && category === 'rios') {
     return FALLBACK_RIVERS_SV;
+  }
+  if (mapped.length === 0 && category === 'lagos') {
+    return FALLBACK_LAKES_SV;
   }
   if (mapped.length > 0) {
     await setJson(cacheKey, { storedAt: now, items: mapped });

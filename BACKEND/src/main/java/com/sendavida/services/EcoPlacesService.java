@@ -43,6 +43,14 @@ public class EcoPlacesService {
             fallbackRiver("fallback-river:sensunapan", "Río Sensunapán", 13.710, -89.720, "Río del occidente de El Salvador")
     );
 
+    private static final List<Map<String, Object>> LAGOS_FALLBACK = List.of(
+            fallbackPlace("fallback-lake:ilopango", "Lago de Ilopango", "lagos", 13.672, -89.055, "water", "Lago ubicado entre San Salvador, Cuscatlán y La Paz"),
+            fallbackPlace("fallback-lake:cerron-grande", "Embalse Cerrón Grande", "lagos", 14.050, -89.050, "water", "Embalse del río Lempa"),
+            fallbackPlace("fallback-lake:guija", "Lago de Güija", "lagos", 14.270, -89.510, "water", "Lago compartido entre El Salvador y Guatemala"),
+            fallbackPlace("fallback-lake:coatepeque", "Lago de Coatepeque", "lagos", 13.864, -89.545, "water", "Lago volcánico de Santa Ana"),
+            fallbackPlace("fallback-lake:olomega", "Laguna de Olomega", "lagos", 13.316, -88.060, "water", "Laguna del oriente de El Salvador")
+    );
+
     public Map<String, Object> listar(String tipo, String q, int page, int size) {
         String t = normalizeTipo(tipo);
         List<Map<String, Object>> base = getOrFetch(t);
@@ -139,6 +147,7 @@ public class EcoPlacesService {
                     }
                 }
                 if (lat == null || lng == null) continue;
+                if (!isInElSalvador(lat, lng)) continue;
 
                 String key = osmType + ":" + idObj;
                 if (unique.containsKey(key)) continue;
@@ -157,10 +166,12 @@ public class EcoPlacesService {
             List<Map<String, Object>> out = new ArrayList<>(unique.values());
             out.sort(Comparator.comparing(o -> String.valueOf(o.getOrDefault("nombre", ""))));
             if (out.isEmpty() && "rios".equals(tipo)) return RIOS_FALLBACK;
+            if (out.isEmpty() && "lagos".equals(tipo)) return LAGOS_FALLBACK;
             return out;
         } catch (Exception e) {
             log.error("EcoPlaces Overpass error ({}) : {}", tipo, e.getMessage());
             if ("rios".equals(tipo)) return RIOS_FALLBACK;
+            if ("lagos".equals(tipo)) return LAGOS_FALLBACK;
             return List.of();
         }
     }
@@ -248,6 +259,10 @@ public class EcoPlacesService {
         return t;
     }
 
+    private static boolean isInElSalvador(double lat, double lng) {
+        return lat >= 13.0 && lat <= 14.6 && lng >= -90.2 && lng <= -87.6;
+    }
+
     private static String firstString(Map<String, Object> m, String... keys) {
         for (String k : keys) {
             Object v = m.get(k);
@@ -260,16 +275,21 @@ public class EcoPlacesService {
     }
 
     private static Map<String, Object> fallbackRiver(String id, String nombre, double lat, double lng, String descripcion) {
+        return fallbackPlace(id, nombre, "rios", lat, lng, "river", descripcion);
+    }
+
+    private static Map<String, Object> fallbackPlace(String id, String nombre, String tipo, double lat, double lng, String natural, String descripcion) {
         Map<String, Object> tags = new LinkedHashMap<>();
         tags.put("name", nombre);
-        tags.put("waterway", "river");
+        if ("river".equals(natural)) tags.put("waterway", "river");
+        else tags.put("natural", natural);
         tags.put("description", descripcion);
 
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("osm_type", "fallback");
         row.put("osm_id", id);
         row.put("nombre", nombre);
-        row.put("tipo", "rios");
+        row.put("tipo", tipo);
         row.put("lat", lat);
         row.put("lng", lng);
         row.put("tags", tags);

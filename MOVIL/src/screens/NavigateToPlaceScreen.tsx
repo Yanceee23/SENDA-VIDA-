@@ -10,6 +10,7 @@ import { apiRequest, toQuery } from '../services/api';
 import { useSettings } from '../state/SettingsContext';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
+import { normalizeLatLng } from '../utils/coordinates';
 
 type LatLng = { lat: number; lng: number };
 
@@ -68,19 +69,15 @@ export function NavigateToPlaceScreen() {
 
   const dest = useMemo(() => {
     if (!selected) return null;
-    const lat = toNum(selected.lat);
-    const lng = toNum(selected.lng);
-    if (lat == null || lng == null) return null;
-    return { lat, lng };
+    return normalizeLatLng({ lat: selected.lat, lng: selected.lng });
   }, [selected]);
 
   useEffect(() => {
-    const lat = toNum(params.destLat);
-    const lng = toNum(params.destLng);
-    if (lat == null || lng == null) return;
+    const point = normalizeLatLng({ lat: params.destLat, lng: params.destLng });
+    if (!point) return;
 
     const name = String(params.destNombre ?? 'Destino');
-    const next = { display_name: name, lat, lng };
+    const next = { display_name: name, lat: point.lat, lng: point.lng };
     setSelected(next);
     setSelectedKey(resultKey(next));
     setQuery(name);
@@ -158,7 +155,7 @@ export function NavigateToPlaceScreen() {
         return;
       }
       const geom = Array.isArray(res?.geometry) ? res.geometry : [];
-      setRoutePoints(geom.map((p) => ({ lat: Number(p.lat), lng: Number(p.lng) })));
+      setRoutePoints(geom.map((p) => normalizeLatLng(p, false)).filter((p): p is LatLng => p != null));
       setRouteMeta({
         distanceM: res.distance_m != null ? Number(res.distance_m) : undefined,
         durationS: res.duration_s != null ? Number(res.duration_s) : undefined,
@@ -171,9 +168,7 @@ export function NavigateToPlaceScreen() {
   }, [dest, me, profile, settings.apiBaseUrl]);
 
   useEffect(() => {
-    const lat = toNum(params.destLat);
-    const lng = toNum(params.destLng);
-    if (lat == null || lng == null) return;
+    if (!normalizeLatLng({ lat: params.destLat, lng: params.destLng })) return;
     if (!me) return;
     if (!dest) return;
     if (routing) return;

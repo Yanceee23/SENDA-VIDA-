@@ -39,6 +39,8 @@ export type AppStackParamList = {
         destLat?: number;
         destLng?: number;
         destNombre?: string;
+        routeStartLat?: number;
+        routeStartLng?: number;
         nivelSeguridad?: string;
       }
     | undefined;

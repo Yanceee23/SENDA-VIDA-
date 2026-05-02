@@ -21,6 +21,7 @@ import { fontFamily } from '../theme/typography';
 import type { AppStackParamList } from '../types/navigation';
 import { formatHMS, formatKm } from '../utils/format';
 import { haversine } from '../utils/geo';
+import { normalizeLatLng } from '../utils/coordinates';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ActiveRoute'>;
 
@@ -45,6 +46,7 @@ const REROUTE_PROGRESS_WINDOW_MS = 28_000;
 const OFF_ROUTE_THRESHOLD_KM = 0.05;
 const MIN_PROGRESS_KM = 0.01;
 const MAX_TRAIL_POINTS = 600;
+const MAX_ROUTE_START_DISTANCE_KM = 0.35;
 
 function minDistanceToRouteKm(point: { lat: number; lng: number }, routePoints: Array<{ lat: number; lng: number }>): number {
   if (routePoints.length === 0) return Number.POSITIVE_INFINITY;
@@ -83,10 +85,14 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
   const tipo = route.params?.tipo ?? 'senderismo';
   const mode = tipo === 'ciclismo' ? 'bike' : 'foot';
   const saveToDb = status === 'signedIn' && route.params?.saveToDb !== false;
-  const destination =
-    Number.isFinite(Number(route.params?.destLat)) && Number.isFinite(Number(route.params?.destLng))
-      ? { lat: Number(route.params?.destLat), lng: Number(route.params?.destLng) }
-      : null;
+  const destination = useMemo(
+    () => normalizeLatLng({ lat: route.params?.destLat, lng: route.params?.destLng }),
+    [route.params?.destLat, route.params?.destLng]
+  );
+  const routeStart = useMemo(
+    () => normalizeLatLng({ lat: route.params?.routeStartLat, lng: route.params?.routeStartLng }),
+    [route.params?.routeStartLat, route.params?.routeStartLng]
+  );
 
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
   const [startPoint, setStartPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -369,7 +375,11 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         return;
       }
 
-      const start = { lat: initial.lat, lng: initial.lng };
+      const gpsStart = { lat: initial.lat, lng: initial.lng };
+      const start =
+        routeStart && haversine(gpsStart.lat, gpsStart.lng, routeStart.lat, routeStart.lng) > MAX_ROUTE_START_DISTANCE_KM
+          ? routeStart
+          : gpsStart;
       setCurrent(start);
       setStartPoint(start);
       setHeading(initial.heading);

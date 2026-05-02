@@ -15,6 +15,7 @@ import { colors } from '../theme/colors';
 import type { AppStackParamList } from '../types/navigation';
 import { fontFamily } from '../theme/typography';
 import { distanciaKm, type LatLng } from '../utils/gps';
+import { normalizeLatLng } from '../utils/coordinates';
 import { getOsrmRoute } from '../services/osrmService';
 import { fetchEcoPlacesFromBackend } from '../services/ecoPlacesBackendService';
 import { getPlacesByCategory, type OverpassPlace, type PlaceCategory } from '../services/overpassService';
@@ -180,7 +181,7 @@ export function SafeRoutesScreen() {
       if (base) {
         try {
           const fromApi = await fetchEcoPlacesFromBackend(base, category, user?.token);
-          if (category === 'rios' && fromApi.length === 0) {
+          if ((category === 'rios' || category === 'lagos') && fromApi.length === 0) {
             res = await getPlacesByCategory(category);
           } else {
             // En otras categorías, [] del backend es válido y no debe forzar fallback.
@@ -265,9 +266,22 @@ export function SafeRoutesScreen() {
 
   const startFromRoute = (r: Ruta, saveToDb: boolean) => {
     const nivelSeguridad = r.nivelSeguridad ?? undefined;
+    const start = parseGps(r.gpsInicio);
+    const end = parseGps(r.gpsFin);
+    const routeParams = {
+      rutaId: r.id,
+      rutaNombre: r.nombre,
+      saveToDb,
+      nivelSeguridad,
+      destLat: end?.lat,
+      destLng: end?.lng,
+      destNombre: end ? r.nombre : undefined,
+      routeStartLat: start?.lat,
+      routeStartLng: start?.lng,
+    };
     Alert.alert('Iniciar actividad', 'Selecciona el tipo de actividad', [
-      { text: 'Ciclismo', onPress: () => navigation.navigate('ActiveRoute', { tipo: 'ciclismo', rutaId: r.id, rutaNombre: r.nombre, saveToDb, nivelSeguridad }) },
-      { text: 'Senderismo', onPress: () => navigation.navigate('ActiveRoute', { tipo: 'senderismo', rutaId: r.id, rutaNombre: r.nombre, saveToDb, nivelSeguridad }) },
+      { text: 'Ciclismo', onPress: () => navigation.navigate('ActiveRoute', { tipo: 'ciclismo', ...routeParams }) },
+      { text: 'Senderismo', onPress: () => navigation.navigate('ActiveRoute', { tipo: 'senderismo', ...routeParams }) },
       { text: 'Cancelar', style: 'cancel' },
     ]);
   };
@@ -658,17 +672,7 @@ function Meta({ icon, text }: { icon: string; text: string }) {
 }
 
 function parseGps(raw: any): { lat: number; lng: number } | null {
-  if (!raw) return null;
-  if (typeof raw === 'string') {
-    try {
-      const j = JSON.parse(raw);
-      if (typeof j?.lat === 'number' && typeof j?.lng === 'number') return { lat: j.lat, lng: j.lng };
-    } catch {
-      return null;
-    }
-  }
-  if (typeof raw?.lat === 'number' && typeof raw?.lng === 'number') return { lat: raw.lat, lng: raw.lng };
-  return null;
+  return normalizeLatLng(raw);
 }
 
 function tiempoEstimado(distKm?: number) {

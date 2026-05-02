@@ -1,5 +1,6 @@
 import { apiRequest, toQuery } from './api';
 import type { OverpassPlace, PlaceCategory } from './overpassService';
+import { normalizeLatLng } from '../utils/coordinates';
 
 type ApiItem = {
   osm_type?: string;
@@ -21,9 +22,8 @@ function mapEcoItemToOverpass(it: ApiItem, categoria: PlaceCategory): OverpassPl
   const osmType = String(it.osm_type ?? '').trim();
   const osmId = it.osm_id;
   if (!osmType || osmId == null) return null;
-  const lat = Number(it.lat);
-  const lng = Number(it.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const point = normalizeLatLng({ lat: it.lat, lng: it.lng });
+  if (!point) return null;
   const nombre = String(it.nombre ?? '').trim();
   if (!nombre) return null;
   const tags = it.tags ?? {};
@@ -39,8 +39,8 @@ function mapEcoItemToOverpass(it: ApiItem, categoria: PlaceCategory): OverpassPl
     nombre,
     descripcion: descriptionParts.length ? String(descriptionParts[0]) : 'Lugar natural en El Salvador',
     categoria,
-    lat,
-    lng,
+    lat: point.lat,
+    lng: point.lng,
   };
 }
 

@@ -1,4 +1,5 @@
 import { apiRequest } from './api';
+import { normalizeLatLng } from '../utils/coordinates';
 
 export type OsrmMode = 'foot' | 'bike';
 
@@ -34,8 +35,8 @@ export async function getOsrmRoute(params: {
   }
   const geometry = route.geometry.coordinates
     .filter((p) => Array.isArray(p) && p.length >= 2)
-    .map((p) => ({ lat: Number(p[1]), lng: Number(p[0]) }))
-    .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    .map((p) => normalizeLatLng({ lat: p[1], lng: p[0] }, false))
+    .filter((p): p is { lat: number; lng: number } => p != null);
   return {
     distanceKm: Math.max(0, Number(route.distance ?? 0) / 1000),
     durationMin: Math.max(0, Number(route.duration ?? 0) / 60),

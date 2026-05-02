@@ -8,8 +8,8 @@
     "dificultad": "Media",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Miradores, bosque nuboso, refugio",
-    "gpsInicio": { "lat": 14.5312, "lng": -90.5401 },
-    "gpsFin": { "lat": 14.5489, "lng": -90.525 }
+    "gpsInicio": { "lat": 13.853, "lng": -89.63 },
+    "gpsFin": { "lat": 13.857, "lng": -89.632 }
   },
   {
     "id": 2,
@@ -20,8 +20,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Media",
     "puntosInteres": "Área de descanso, mirador, señalización",
-    "gpsInicio": { "lat": 14.568, "lng": -90.505 },
-    "gpsFin": { "lat": 14.5755, "lng": -90.4962 }
+    "gpsInicio": { "lat": 13.813, "lng": -89.633 },
+    "gpsFin": { "lat": 13.819, "lng": -89.628 }
   },
   {
     "id": 3,
@@ -32,8 +32,8 @@
     "dificultad": "Difícil",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Miradores, puntos de agua, pasos estrechos",
-    "gpsInicio": { "lat": 14.613, "lng": -90.492 },
-    "gpsFin": { "lat": 14.641, "lng": -90.468 }
+    "gpsInicio": { "lat": 14.383, "lng": -89.124 },
+    "gpsFin": { "lat": 14.39, "lng": -89.119 }
   },
   {
     "id": 4,
@@ -44,8 +44,8 @@
     "dificultad": "Media",
     "nivelSeguridad": "Media",
     "puntosInteres": "Refugio, señalización, vistas panorámicas",
-    "gpsInicio": { "lat": 14.589, "lng": -90.522 },
-    "gpsFin": { "lat": 14.589, "lng": -90.522 }
+    "gpsInicio": { "lat": 14.401, "lng": -89.39 },
+    "gpsFin": { "lat": 14.401, "lng": -89.39 }
   },
   {
     "id": 5,
@@ -56,8 +56,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Jardines, senderos señalizados, puntos de sombra",
-    "gpsInicio": { "lat": 14.627, "lng": -90.515 },
-    "gpsFin": { "lat": 14.632, "lng": -90.507 }
+    "gpsInicio": { "lat": 13.68, "lng": -89.25 },
+    "gpsFin": { "lat": 13.686, "lng": -89.246 }
   },
   {
     "id": 6,
@@ -68,8 +68,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Aves, área protegida, mirador pequeño",
-    "gpsInicio": { "lat": 14.648, "lng": -90.527 },
-    "gpsFin": { "lat": 14.651, "lng": -90.521 }
+    "gpsInicio": { "lat": 13.724, "lng": -89.37 },
+    "gpsFin": { "lat": 13.728, "lng": -89.366 }
   },
   {
     "id": 7,
@@ -80,8 +80,8 @@
     "dificultad": "Media",
     "nivelSeguridad": "Media",
     "puntosInteres": "Cascada, rocas resbaladizas, puntos de agua",
-    "gpsInicio": { "lat": 14.564, "lng": -90.575 },
-    "gpsFin": { "lat": 14.552, "lng": -90.56 }
+    "gpsInicio": { "lat": 13.705, "lng": -88.86 },
+    "gpsFin": { "lat": 13.697, "lng": -88.852 }
   },
   {
     "id": 8,
@@ -92,8 +92,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Media",
     "puntosInteres": "Sombra constante, áreas de descanso",
-    "gpsInicio": { "lat": 14.575, "lng": -90.553 },
-    "gpsFin": { "lat": 14.585, "lng": -90.542 }
+    "gpsInicio": { "lat": 13.738, "lng": -89.16 },
+    "gpsFin": { "lat": 13.745, "lng": -89.154 }
   },
   {
     "id": 9,
@@ -104,8 +104,8 @@
     "dificultad": "Media",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Miradores, muelle, puntos de interés",
-    "gpsInicio": { "lat": 14.49, "lng": -90.63 },
-    "gpsFin": { "lat": 14.505, "lng": -90.615 }
+    "gpsInicio": { "lat": 13.672, "lng": -89.055 },
+    "gpsFin": { "lat": 13.678, "lng": -89.048 }
   },
   {
     "id": 10,
@@ -116,8 +116,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Alta",
     "puntosInteres": "Orilla, sombra, refugios",
-    "gpsInicio": { "lat": 14.502, "lng": -90.61 },
-    "gpsFin": { "lat": 14.502, "lng": -90.61 }
+    "gpsInicio": { "lat": 13.672, "lng": -89.055 },
+    "gpsFin": { "lat": 13.672, "lng": -89.055 }
   },
   {
     "id": 11,
@@ -128,8 +128,8 @@
     "dificultad": "Fácil",
     "nivelSeguridad": "Media",
     "puntosInteres": "Puntos de agua, sombra, zona de descanso",
-    "gpsInicio": { "lat": 13.92, "lng": -90.8 },
-    "gpsFin": { "lat": 13.93, "lng": -90.78 }
+    "gpsInicio": { "lat": 13.493, "lng": -89.381 },
+    "gpsFin": { "lat": 13.499, "lng": -89.374 }
   },
   {
     "id": 12,
@@ -140,8 +140,8 @@
     "dificultad": "Media",
     "nivelSeguridad": "Media",
     "puntosInteres": "Dunas, mirador, viento fuerte",
-    "gpsInicio": { "lat": 13.935, "lng": -90.785 },
-    "gpsFin": { "lat": 13.945, "lng": -90.77 }
+    "gpsInicio": { "lat": 13.268, "lng": -89.002 },
+    "gpsFin": { "lat": 13.275, "lng": -88.995 }
   }
 ]
 

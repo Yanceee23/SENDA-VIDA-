@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import MapLibreGL, { CameraRef, UserTrackingMode } from '@maplibre/maplibre-react-native';
 import { colors } from '../theme/colors';
 import type { LatLng } from '../utils/gps';
+import { normalizeLatLng } from '../utils/coordinates';
 import { OfflineSimpleMap } from './OfflineSimpleMap';
 
 type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -46,6 +47,10 @@ function bboxFrom(coords: LatLng[]): { ne: [number, number]; sw: [number, number
   return { ne: [maxLng, maxLat], sw: [minLng, minLat] };
 }
 
+function validMapPoints(coords: LatLng[] | undefined): LatLng[] {
+  return (coords ?? []).map((p) => normalizeLatLng(p, false)).filter((p): p is LatLng => p != null);
+}
+
 /** Expande muy poco bbox para rutas rectas muy cortas */
 function padTinyBox(box: { ne: [number, number]; sw: [number, number] }) {
   const pad = 0.03;
@@ -79,6 +84,11 @@ export default function LiveMapNative({
   const [navFollowUser, setNavFollowUser] = useState(true);
 
   const navMode = interactionMode === 'route_navigation';
+  const safePlannedRoutePoints = useMemo(() => validMapPoints(plannedRoutePoints), [plannedRoutePoints]);
+  const safePoints = useMemo(() => validMapPoints(points), [points]);
+  const safeCurrent = useMemo(() => normalizeLatLng(current, false), [current]);
+  const safeDestination = useMemo(() => normalizeLatLng(destination, false), [destination]);
+  const safeFinalPoint = useMemo(() => normalizeLatLng(finalPoint, false), [finalPoint]);
 
   const plannedGeoJson = useMemo(
     () => ({
@@ -86,10 +96,10 @@ export default function LiveMapNative({
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: (plannedRoutePoints ?? []).map((p) => [p.lng, p.lat]),
+        coordinates: safePlannedRoutePoints.map((p) => [p.lng, p.lat]),
       },
     }),
-    [plannedRoutePoints]
+    [safePlannedRoutePoints]
   );
 
   const trailGeoJson = useMemo(
@@ -98,31 +108,31 @@ export default function LiveMapNative({
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: (points.length > 260 ? points.slice(-260) : points).map((p) => [p.lng, p.lat]),
+        coordinates: (safePoints.length > 260 ? safePoints.slice(-260) : safePoints).map((p) => [p.lng, p.lat]),
       },
     }),
-    [points]
+    [safePoints]
   );
 
   const routeSig = useMemo(() => {
-    const pr = plannedRoutePoints ?? [];
+    const pr = safePlannedRoutePoints;
     if (pr.length >= 8) return `n=${pr.length}:${pr[0].lat}:${pr[0].lng}:${pr[pr.length - 1].lat}:${pr[pr.length - 1].lng}`;
     return pr.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
-  }, [plannedRoutePoints]);
+  }, [safePlannedRoutePoints]);
 
   const collectNavPoints = useCallback(() => {
     const out: LatLng[] = [];
-    const pr = plannedRoutePoints ?? [];
+    const pr = safePlannedRoutePoints;
     if (pr.length >= 2) {
       for (const p of pr) out.push(p);
-    } else if (points.length >= 2) {
-      const tail = points.length > 80 ? points.slice(-80) : points;
+    } else if (safePoints.length >= 2) {
+      const tail = safePoints.length > 80 ? safePoints.slice(-80) : safePoints;
       for (const p of tail) out.push(p);
     }
-    if (destination) out.push(destination);
-    if (current) out.push(current);
+    if (safeDestination) out.push(safeDestination);
+    if (safeCurrent) out.push(safeCurrent);
     return out;
-  }, [plannedRoutePoints, destination, current, points]);
+  }, [safePlannedRoutePoints, safeDestination, safeCurrent, safePoints]);
 
   const fitRouteFrame = useCallback(
     (animationMs: number) => {
@@ -188,7 +198,7 @@ export default function LiveMapNative({
 
   const cameraHeading = navMode ? 0 : Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const navFollowZoom = 16;
-  const displayStartPoint = startPoint ?? points[0] ?? plannedRoutePoints?.[0] ?? null;
+  const displayStartPoint = normalizeLatLng(startPoint, false) ?? safePoints[0] ?? safePlannedRoutePoints[0] ?? null;
 
   const navDefaultSettings = useMemo(
     () => ({
@@ -227,7 +237,7 @@ export default function LiveMapNative({
 
         <MapLibreGL.UserLocation visible={permissionOk} />
 
-        {plannedRoutePoints && plannedRoutePoints.length >= 2 ? (
+        {safePlannedRoutePoints.length >= 2 ? (
           <MapLibreGL.ShapeSource id="planned-route-source" shape={plannedGeoJson as any}>
             <MapLibreGL.LineLayer
               id="planned-route-line"
@@ -239,7 +249,7 @@ export default function LiveMapNative({
           </MapLibreGL.ShapeSource>
         ) : null}
 
-        {points.length >= 2 ? (
+        {safePoints.length >= 2 ? (
           <MapLibreGL.ShapeSource id="trail-source" shape={trailGeoJson as any}>
             <MapLibreGL.LineLayer
               id="trail-line"
@@ -258,14 +268,14 @@ export default function LiveMapNative({
           </MapLibreGL.PointAnnotation>
         ) : null}
 
-        {destination ? (
-          <MapLibreGL.PointAnnotation id="destination-marker" coordinate={[destination.lng, destination.lat]}>
+        {safeDestination ? (
+          <MapLibreGL.PointAnnotation id="destination-marker" coordinate={[safeDestination.lng, safeDestination.lat]}>
             <View style={styles.destDot} />
           </MapLibreGL.PointAnnotation>
         ) : null}
 
-        {finalPoint ? (
-          <MapLibreGL.PointAnnotation id="final-marker" coordinate={[finalPoint.lng, finalPoint.lat]}>
+        {safeFinalPoint ? (
+          <MapLibreGL.PointAnnotation id="final-marker" coordinate={[safeFinalPoint.lng, safeFinalPoint.lat]}>
             <View style={styles.finalDot} />
           </MapLibreGL.PointAnnotation>
         ) : null}
@@ -279,9 +289,9 @@ export default function LiveMapNative({
               accessibilityLabel="Volver a seguir mi ubicación"
               style={({ pressed }) => [styles.navFab, styles.navFabSecondary, pressed && styles.navFabPressed]}
               onPress={() => {
-                if (current) {
+                if (safeCurrent) {
                   cameraRef.current?.setCamera({
-                    centerCoordinate: [current.lng, current.lat],
+                    centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
                     zoomLevel: navFollowZoom,
                     animationDuration: 650,
                   });
