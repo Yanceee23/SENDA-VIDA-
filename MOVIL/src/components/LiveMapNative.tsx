@@ -124,6 +124,18 @@ export default function LiveMapNative({
     [trailLinePoints]
   );
 
+  const currentGeoJson = useMemo(
+    () => ({
+      type: 'Feature' as const,
+      properties: {},
+      geometry: {
+        type: 'Point' as const,
+        coordinates: safeCurrent ? [safeCurrent.lng, safeCurrent.lat] : [region.longitude, region.latitude],
+      },
+    }),
+    [safeCurrent, region.latitude, region.longitude]
+  );
+
   const routeSig = useMemo(() => {
     const pr = safePlannedRoutePoints;
     if (pr.length >= 8) {
@@ -219,6 +231,15 @@ export default function LiveMapNative({
   const navFollowZoom = 16;
   const displayStartPoint = normalizeLatLng(startPoint, false) ?? safePoints[0] ?? safePlannedRoutePoints[0] ?? null;
 
+  useEffect(() => {
+    if (!navMode || !mapReady || routeNavUserMoved || !navFollowUser || !safeCurrent) return;
+    cameraRef.current?.setCamera({
+      centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
+      zoomLevel: navFollowZoom,
+      animationDuration: 650,
+    });
+  }, [mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent]);
+
   const navDefaultSettings = useMemo(
     () => ({
       centerCoordinate: [region.longitude, region.latitude] as [number, number],
@@ -254,14 +275,27 @@ export default function LiveMapNative({
           heading={cameraHeading}
         />
 
-        <MapLibreGL.UserLocation visible={permissionOk} />
-
         {safeCurrent ? (
-          <MapLibreGL.PointAnnotation id="current-position-marker" coordinate={[safeCurrent.lng, safeCurrent.lat]}>
-            <View style={styles.currentPulse}>
-              <View style={styles.currentDot} />
-            </View>
-          </MapLibreGL.PointAnnotation>
+          <MapLibreGL.ShapeSource id="current-position-source" shape={currentGeoJson as any}>
+            <MapLibreGL.CircleLayer
+              id="current-position-pulse"
+              style={{
+                circleColor: 'rgba(37,99,235,0.22)',
+                circleRadius: 13,
+                circlePitchAlignment: 'map',
+              }}
+            />
+            <MapLibreGL.CircleLayer
+              id="current-position-dot"
+              style={{
+                circleColor: '#2563EB',
+                circleRadius: 7,
+                circleStrokeColor: '#FFFFFF',
+                circleStrokeWidth: 2,
+                circlePitchAlignment: 'map',
+              }}
+            />
+          </MapLibreGL.ShapeSource>
         ) : null}
 
         {safePlannedRoutePoints.length >= 2 ? (

@@ -172,7 +172,10 @@ async function parseJsonSafe(res: Response): Promise<unknown> {
 }
 
 function buildGeminiUrl(model: string): string {
-  return `${GEMINI_API_BASE_URL}/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  if (!GEMINI_API_KEY) throw new Error(CONFIG_ERROR_MESSAGE);
+  const url = new URL(`${GEMINI_API_BASE_URL}/models/${model}:generateContent`);
+  url.searchParams.set('key', GEMINI_API_KEY);
+  return url.toString();
 }
 
 function isModelNotFound(status: number, message: string): boolean {
@@ -188,11 +191,12 @@ function isRateLimitError(status: number): boolean {
 async function callGeminiOnce(model: string, body: GeminiRequestBody): Promise<Response> {
   console.log('🔑 Gemini API:', GEMINI_API_KEY ? 'clave configurada' : 'vacía (.env)');
   console.log('🤖 MODEL:', model);
-  console.log('🌐 URL:', buildGeminiUrl(model));
+  const url = buildGeminiUrl(model);
+  console.log('🌐 URL:', `${GEMINI_API_BASE_URL}/models/${model}:generateContent?key=***`);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
-    const res = await fetch(buildGeminiUrl(model), {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -407,6 +411,8 @@ function normalizeIdentification(raw: unknown, rawText: string): LivingThingIden
 
 function fallbackIdentificationFromText(rawText: string): LivingThingIdentification {
   const lower = rawText.toLowerCase();
+  const cleanText = rawText.replace(/\s+/g, ' ').trim();
+  const usableDescription = cleanText.length > 0 && cleanText.length < 500 ? cleanText : '';
   const categoria: LivingThingIdentification['categoria'] = lower.includes('planta')
     ? 'planta'
     : lower.includes('animal')
@@ -420,9 +426,9 @@ function fallbackIdentificationFromText(rawText: string): LivingThingIdentificat
     categoria,
     nombreComun: 'Sin identificar',
     tipoEspecifico: 'No disponible',
-    descripcion: 'No disponible',
+    descripcion: usableDescription || 'No se pudo obtener una descripción confiable. Intenta otra foto con mejor luz y el organismo centrado.',
     nombreCientifico: 'No disponible',
-    distribucion: 'No disponible',
+    distribucion: 'No determinada desde la foto.',
     habitat: 'No disponible',
     peligrosidad: 'No disponible',
     confianza: 35,
@@ -433,10 +439,30 @@ function fallbackIdentificationFromText(rawText: string): LivingThingIdentificat
   };
 }
 
+function normalizeImageBase64(raw: string): string {
+  const value = String(raw ?? '').trim();
+  const commaIdx = value.indexOf(',');
+  if (value.startsWith('data:') && commaIdx >= 0) {
+    return value.slice(commaIdx + 1).trim();
+  }
+  return value;
+}
+
+function normalizeImageMimeType(raw: string): string {
+  const mime = String(raw ?? '').trim().toLowerCase();
+  if (mime === 'image/jpg') return 'image/jpeg';
+  return mime.startsWith('image/') ? mime : 'image/jpeg';
+}
+
 export async function identifyLivingThingFromImage(params: {
   base64: string;
   mimeType: string;
 }): Promise<LivingThingIdentification> {
+  if (!GEMINI_API_KEY) throw new Error(CONFIG_ERROR_MESSAGE);
+  const imageBase64 = normalizeImageBase64(params.base64);
+  const imageMimeType = normalizeImageMimeType(params.mimeType);
+  if (!imageBase64) throw new Error('No se pudo leer la imagen para identificarla.');
+
   const prompt = `Observa esta imagen. Identifica el ser vivo principal en español.
 Responde ÚNICAMENTE con un objeto JSON válido (sin texto ni markdown antes o después).
 Claves obligatorias y significado:
@@ -461,8 +487,8 @@ Ejemplo válido conceptual (solo estructura, no inventes estos datos desde la fo
             { text: prompt },
             {
               inline_data: {
-                mime_type: params.mimeType || 'image/jpeg',
-                data: params.base64,
+                mime_type: imageMimeType,
+                data: imageBase64,
               },
             },
           ],

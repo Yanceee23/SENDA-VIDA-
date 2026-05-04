@@ -55,7 +55,9 @@ const MIN_PROGRESS_KM = 0.01;
 const MAX_ROUTE_START_DISTANCE_KM = 0.35;
 const MIN_DISTANCE_DELTA_KM = 0.0015;
 const MAX_DISTANCE_DELTA_KM = 0.25;
-const MIN_TRAIL_POINT_DELTA_KM = 0.002;
+const MIN_TRAIL_POINT_DELTA_KM = 0.004;
+const MIN_TIMED_TRAIL_DELTA_KM = 0.0005;
+const TRAIL_POINT_INTERVAL_MS = 5_000;
 /** Lecturas con peor precisión no suman km pero no bloquean tanto el avance en senderismo */
 const GPS_MAX_ACCURACY_M = 115;
 
@@ -232,6 +234,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
   const lastRerouteAtRef = useRef(0);
   const progressRef = useRef<{ at: number; distToDestKm: number } | null>(null);
   const lastDistancePointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTrailPointAtRef = useRef(0);
   const maybeRecalculateRouteRef = useRef<(point: { lat: number; lng: number }) => void>(() => {});
   const pausedRef = useRef(false);
   const finishConfirmationRef = useRef(false);
@@ -290,6 +293,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
     setDestNombre(undefined);
     setMeta({ saveToDb: true });
     lastDistancePointRef.current = null;
+    lastTrailPointAtRef.current = 0;
     reroutingRef.current = false;
     lastRerouteAtRef.current = 0;
     progressRef.current = null;
@@ -388,7 +392,13 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
         if (!prev.length) return [next];
         const last = prev[prev.length - 1];
         const delta = haversine(last.lat, last.lng, next.lat, next.lng);
-        if (delta >= MIN_TRAIL_POINT_DELTA_KM) {
+        const now = Number.isFinite(point.timestamp) ? Number(point.timestamp) : Date.now();
+        const elapsedSinceTrailPoint = now - lastTrailPointAtRef.current;
+        const lowAccuracy = Number.isFinite(point.accuracyM) && Number(point.accuracyM) > GPS_MAX_ACCURACY_M;
+        const shouldAppendBySteps = delta >= MIN_TRAIL_POINT_DELTA_KM;
+        const shouldAppendByTime = elapsedSinceTrailPoint >= TRAIL_POINT_INTERVAL_MS && delta >= MIN_TIMED_TRAIL_DELTA_KM;
+        if (!lowAccuracy && (shouldAppendBySteps || shouldAppendByTime)) {
+          lastTrailPointAtRef.current = now;
           return [...prev, next];
         }
         return prev;
@@ -456,6 +466,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
         setPoints([start]);
         setDistKm(0);
         lastDistancePointRef.current = start;
+        lastTrailPointAtRef.current = initial.timestamp || Date.now();
         const startTs = Date.now();
         setStartedAt(startTs);
         setElapsedSec(0);

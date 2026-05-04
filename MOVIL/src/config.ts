@@ -33,7 +33,7 @@ function toPositiveNumberOrDefault(raw: string | undefined, defaultValue: number
 
 export const GBIF_SEARCH_RADIUS_KM = toPositiveNumberOrDefault(
   process.env.EXPO_PUBLIC_GBIF_SEARCH_RADIUS_KM,
-  2
+  1
 );
 
 // Si uno falla o se satura (429), se prueba el siguiente de la lista.

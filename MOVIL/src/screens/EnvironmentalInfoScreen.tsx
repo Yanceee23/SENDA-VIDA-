@@ -46,6 +46,15 @@ type Poi = {
   distancia_km?: number;
 };
 
+function hasSpeciesData(especies: ExplorerResult['especies'] | null | undefined): especies is NonNullable<ExplorerResult['especies']> {
+  if (!especies) return false;
+  const floraCount = Number(especies.floraTotal ?? 0);
+  const faunaCount = Number(especies.faunaTotal ?? 0);
+  const floraItems = Array.isArray(especies.flora) ? especies.flora.length : 0;
+  const faunaItems = Array.isArray(especies.fauna) ? especies.fauna.length : 0;
+  return floraCount > 0 || faunaCount > 0 || floraItems > 0 || faunaItems > 0;
+}
+
 export function EnvironmentalInfoScreen({ navigation, route }: Props) {
   const { settings } = useSettings();
   const { useDeviceGps, autoFetch } = route.params;
@@ -136,10 +145,12 @@ export function EnvironmentalInfoScreen({ navigation, route }: Props) {
         climaTask ?? Promise.resolve(null),
       ]);
 
+      const explorerValue = explorerRes.status === 'fulfilled' ? explorerRes.value : null;
+      const especiesFromBackend = hasSpeciesData(explorerValue?.especies) ? explorerValue.especies : null;
       const especiesFromGbif = especiesRes.status === 'fulfilled' ? especiesRes.value : null;
-      const finalEspecies = especiesFromGbif ?? { flora: [], floraTotal: 0, fauna: [], faunaTotal: 0 };
+      const finalEspecies = especiesFromBackend ?? especiesFromGbif ?? { flora: [], floraTotal: 0, fauna: [], faunaTotal: 0 };
 
-      const climaFromBackend = explorerRes.status === 'fulfilled' ? explorerRes.value?.clima : null;
+      const climaFromBackend = explorerValue?.clima ?? null;
       const climaFromDirect = climaRes?.status === 'fulfilled' && climaRes.value
         ? { temperatura: climaRes.value.temperaturaC, condicion: climaRes.value.condicion }
         : null;
@@ -148,8 +159,8 @@ export function EnvironmentalInfoScreen({ navigation, route }: Props) {
       const nextData: ExplorerResult = {
         clima,
         especies: finalEspecies,
-        zona_protegida: explorerRes.status === 'fulfilled' ? explorerRes.value?.zona_protegida : null,
-        wikidata: explorerRes.status === 'fulfilled' ? explorerRes.value?.wikidata : null,
+        zona_protegida: explorerValue?.zona_protegida ?? null,
+        wikidata: explorerValue?.wikidata ?? null,
       };
       setData(nextData);
       setGeo(geoRes.status === 'fulfilled' ? geoRes.value : null);
@@ -178,7 +189,7 @@ export function EnvironmentalInfoScreen({ navigation, route }: Props) {
           setGpsResolved(true);
           return;
         }
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
         setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
         setGpsMsg('Ubicación actual obtenida del GPS del celular.');
         setGpsResolved(true);

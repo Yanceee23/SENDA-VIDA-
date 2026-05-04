@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 
+const TRACKING_INTERVAL_MS = 5_000;
+const APPROX_FIVE_STEPS_M = 4;
+
 export type GPSPoint = {
   lat: number;
   lng: number;
@@ -82,8 +85,8 @@ export function useGPS() {
         watchSub.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: 1_000,
-            distanceInterval: 2,
+            timeInterval: TRACKING_INTERVAL_MS,
+            distanceInterval: APPROX_FIVE_STEPS_M,
             mayShowUserSettingsDialog: true,
           },
           (position) => {

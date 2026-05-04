@@ -19,7 +19,7 @@ public class RecomendacionService {
     private static final int MAX_GBIF_RESULTS = 300;
 
     @Value("${gbif.url}") private String gbifUrl;
-    @Value("${gbif.search-radius-km:2}") private double searchRadiusKm;
+    @Value("${gbif.search-radius-km:1}") private double searchRadiusKm;
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper mapper;
     private final GpsCalculator gpsCalculator;
