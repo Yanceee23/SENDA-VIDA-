@@ -77,9 +77,17 @@ export function RouteFinishedScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenEnvironment, autoOpened]);
 
-  const distancia = backend?.distanciaKm ?? summary.distanciaKm;
-  const calorias = backend?.calorias ?? summary.calorias;
-  const tiempo = backend?.tiempoSegundos ?? summary.tiempoSegundos;
+  const backendDistancia = Number(backend?.distanciaKm);
+  const backendDistanciaValida = Number.isFinite(backendDistancia) && backendDistancia > 0;
+  const distancia = backendDistanciaValida ? backendDistancia : summary.distanciaKm;
+
+  const backendCalorias = Number(backend?.calorias);
+  const backendCaloriasValida = Number.isFinite(backendCalorias) && backendCalorias > 0;
+  const calorias = backendCaloriasValida ? backendCalorias : summary.calorias;
+
+  const backendTiempo = Number(backend?.tiempoSegundos);
+  const backendTiempoValido = Number.isFinite(backendTiempo) && backendTiempo > 0;
+  const tiempo = backendTiempoValido ? backendTiempo : summary.tiempoSegundos;
 
   return (
     <Screen contentStyle={styles.screen}>

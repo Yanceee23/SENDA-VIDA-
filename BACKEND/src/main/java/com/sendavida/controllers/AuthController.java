@@ -33,8 +33,12 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, Object> body) {
         try {
-            String correo = (String) body.get("correo");
-            String password = (String) body.get("password");
+            Object rawCorreo = body != null ? body.get("correo") : null;
+            Object rawPass = body != null ? body.get("password") : null;
+            String correo = rawCorreo != null ? String.valueOf(rawCorreo).trim() : "";
+            String password = rawPass instanceof String ? (String) rawPass : rawPass != null ? String.valueOf(rawPass) : "";
+            if (correo.isEmpty() || password.isEmpty())
+                return ResponseEntity.badRequest().body(Map.of("error", "Indica correo y contraseña."));
             return ResponseEntity.ok(authService.login(correo, password));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", rootMessage(e)));

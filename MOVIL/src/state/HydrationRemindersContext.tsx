@@ -35,6 +35,13 @@ type Persisted = {
   toggles: Toggles;
 };
 
+type ActiveRouteProgress = {
+  distanciaKm: number;
+  calorias: number;
+  tiempoSegundos: number;
+  tipo: 'ciclismo' | 'senderismo' | null;
+};
+
 type Ctx = {
   glassesToday: number;
   addGlass: () => void;
@@ -45,6 +52,9 @@ type Ctx = {
 
   routeActive: boolean;
   setRouteActive: (active: boolean) => void;
+  activeRouteProgress: ActiveRouteProgress;
+  setActiveRouteProgress: (progress: Partial<ActiveRouteProgress>) => void;
+  resetActiveRouteProgress: () => void;
   schedulePostRouteIfEnabled: () => Promise<void>;
   notifyExtremeWeather: (message: string) => Promise<void>;
 };
@@ -52,11 +62,18 @@ type Ctx = {
 const HydrationCtx = createContext<Ctx | null>(null);
 
 const defaultToggles: Toggles = { duringRoute30m: false, rest1h: false, postRoute: false, food3h: false };
+const defaultActiveRouteProgress: ActiveRouteProgress = {
+  distanciaKm: 0,
+  calorias: 0,
+  tiempoSegundos: 0,
+  tipo: null,
+};
 
 export function HydrationRemindersProvider({ children }: { children: React.ReactNode }) {
   const [glassesToday, setGlassesToday] = useState(0);
   const [toggles, setToggles] = useState<Toggles>(defaultToggles);
   const [routeActive, setRouteActive] = useState(false);
+  const [activeRouteProgress, setActiveRouteProgressState] = useState<ActiveRouteProgress>(defaultActiveRouteProgress);
 
   const duringRouteNotifId = useRef<string | null>(null);
   const restNotifId = useRef<string | null>(null);
@@ -233,6 +250,14 @@ export function HydrationRemindersProvider({ children }: { children: React.React
     }
   };
 
+  const setActiveRouteProgress = (progress: Partial<ActiveRouteProgress>) => {
+    setActiveRouteProgressState((prev) => ({ ...prev, ...progress }));
+  };
+
+  const resetActiveRouteProgress = () => {
+    setActiveRouteProgressState(defaultActiveRouteProgress);
+  };
+
   const value = useMemo<Ctx>(
     () => ({
       glassesToday,
@@ -242,10 +267,13 @@ export function HydrationRemindersProvider({ children }: { children: React.React
       setToggle,
       routeActive,
       setRouteActive,
+      activeRouteProgress,
+      setActiveRouteProgress,
+      resetActiveRouteProgress,
       schedulePostRouteIfEnabled,
       notifyExtremeWeather,
     }),
-    [glassesToday, toggles, routeActive]
+    [activeRouteProgress, glassesToday, toggles, routeActive]
   );
 
   return <HydrationCtx.Provider value={value}>{children}</HydrationCtx.Provider>;

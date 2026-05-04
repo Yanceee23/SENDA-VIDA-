@@ -1,6 +1,7 @@
 package com.sendavida.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sendavida.utils.GpsCalculator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,11 +16,13 @@ import java.util.*;
 @Service @RequiredArgsConstructor @Slf4j
 public class RecomendacionService {
     private static final double KM_PER_DEGREE_LAT = 111.0;
-    private static final int SEARCH_RADIUS_KM = 25;
+    private static final int MAX_GBIF_RESULTS = 300;
 
     @Value("${gbif.url}") private String gbifUrl;
+    @Value("${gbif.search-radius-km:2}") private double searchRadiusKm;
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper mapper;
+    private final GpsCalculator gpsCalculator;
 
     public Map<String, Object> getEspeciesGBIF(double lat, double lng, int limit) {
         try {
@@ -68,8 +71,8 @@ public class RecomendacionService {
      * GBIF usa orden longitud-latitud en WKT.
      */
     private String buildGeometryWkt(double lat, double lng) {
-        double latDelta = SEARCH_RADIUS_KM / KM_PER_DEGREE_LAT;
-        double lngDelta = SEARCH_RADIUS_KM / (KM_PER_DEGREE_LAT * Math.cos(Math.toRadians(lat)));
+        double latDelta = searchRadiusKm / KM_PER_DEGREE_LAT;
+        double lngDelta = searchRadiusKm / (KM_PER_DEGREE_LAT * Math.cos(Math.toRadians(lat)));
         double minLng = lng - lngDelta;
         double maxLng = lng + lngDelta;
         double minLat = lat - latDelta;
@@ -84,7 +87,10 @@ public class RecomendacionService {
         String url = UriComponentsBuilder.fromHttpUrl(gbifUrl + "/occurrence/search")
             .queryParam("kingdom", kingdom)
             .queryParam("geometry", geometry)
-            .queryParam("limit", limit)
+            .queryParam("hasCoordinate", true)
+            .queryParam("hasGeospatialIssue", false)
+            .queryParam("occurrenceStatus", "PRESENT")
+            .queryParam("limit", MAX_GBIF_RESULTS)
             .build(true)
             .toUriString();
 
@@ -96,18 +102,26 @@ public class RecomendacionService {
 
         Set<String> nombres = new LinkedHashSet<>();
         for (Map<String, Object> occ : results) {
+            Double occLat = toDouble(occ.get("decimalLatitude"));
+            Double occLng = toDouble(occ.get("decimalLongitude"));
+            if (occLat == null || occLng == null) continue;
+            double distanciaKm = gpsCalculator.distanciaKm(lat, lng, occLat, occLng);
+            if (distanciaKm > searchRadiusKm) continue;
+
             String species = occ.get("species") != null ? String.valueOf(occ.get("species")).trim() : "";
             String scientificName = occ.get("scientificName") != null ? String.valueOf(occ.get("scientificName")).trim() : "";
             String nombre = !species.isBlank() ? species : scientificName;
             if (!nombre.isBlank()) nombres.add(nombre);
         }
 
+        int totalUniqueSpecies = nombres.size();
         List<Map<String, String>> items = nombres.stream()
+            .limit(limit)
             .map(nombre -> Map.of("nombre", nombre))
             .toList();
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("count", json.getOrDefault("count", 0));
+        data.put("count", totalUniqueSpecies);
         data.put("items", items);
         return data;
     }
@@ -119,6 +133,16 @@ public class RecomendacionService {
             return Integer.parseInt(String.valueOf(value));
         } catch (NumberFormatException e) {
             return 0;
+        }
+    }
+
+    private Double toDouble(Object value) {
+        if (value instanceof Number n) return n.doubleValue();
+        if (value == null) return null;
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

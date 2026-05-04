@@ -7,6 +7,7 @@ import com.sendavida.utils.GpsCalculator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -40,16 +41,33 @@ public class ActividadService {
         return actividadRepository.save(actividad);
     }
 
-    public Actividad finalizar(Long actividadId) {
+    public Actividad finalizar(Long actividadId, BigDecimal distanciaKm, BigDecimal calorias, Integer tiempoSegundos) {
         Actividad a = actividadRepository.findById(actividadId)
             .orElseThrow(() -> new RuntimeException("Actividad no encontrada"));
         a.setEstado("finalizada");
         a.setFinalizadaEn(LocalDateTime.now());
-        if (a.getIniciadaEn() != null) {
+
+        if (distanciaKm != null) {
+            a.setDistanciaRecorrida(sanitizeDecimal(distanciaKm));
+        }
+        if (calorias != null) {
+            a.setCalorias(sanitizeDecimal(calorias));
+        }
+        if (tiempoSegundos != null && tiempoSegundos >= 0) {
+            a.setTiempoSegundos(tiempoSegundos);
+        } else if (a.getIniciadaEn() != null) {
             long seg = ChronoUnit.SECONDS.between(a.getIniciadaEn(), a.getFinalizadaEn());
             a.setTiempoSegundos((int) seg);
         }
         return actividadRepository.save(a);
+    }
+
+    public Actividad finalizar(Long actividadId) {
+        return finalizar(actividadId, null, null, null);
+    }
+
+    private BigDecimal sanitizeDecimal(BigDecimal value) {
+        return value.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
     public Optional<Actividad> getActiva(Long usuarioId) {

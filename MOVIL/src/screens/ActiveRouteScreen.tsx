@@ -9,7 +9,7 @@ import { LargeButton } from '../components/LargeButton';
 import { LiveMap } from '../components/LiveMap';
 import { useGPS, type GPSPoint } from '../hooks/useGPS';
 import { getOsrmRoute } from '../services/osrmService';
-import { addTodayStats, syncStatsToBackend } from '../services/statsService';
+import { addTodayStats, getMonthStats, syncStatsToBackend } from '../services/statsService';
 import { detectExtremeWeather } from '../services/weatherAlertsService';
 import { apiRequest, toQuery } from '../services/api';
 import { requestRouteAdvice } from '../services/geminiService';
@@ -21,6 +21,7 @@ import { fontFamily } from '../theme/typography';
 import type { AppStackParamList } from '../types/navigation';
 import { formatHMS, formatKm } from '../utils/format';
 import { haversine } from '../utils/geo';
+import { calcularCalorias } from '../utils/gps';
 import { normalizeLatLng } from '../utils/coordinates';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ActiveRoute'>;
@@ -47,13 +48,29 @@ const OFF_ROUTE_THRESHOLD_KM = 0.05;
 const MIN_PROGRESS_KM = 0.01;
 const MAX_TRAIL_POINTS = 600;
 const MAX_ROUTE_START_DISTANCE_KM = 0.35;
+const MIN_DISTANCE_DELTA_KM = 0.002;
+const MAX_DISTANCE_DELTA_KM = 0.25;
+const MIN_TRAIL_POINT_DELTA_KM = 0.01;
+
+function pointToSegmentDistanceKm(
+  p: { lat: number; lng: number },
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number }
+): number {
+  const dx = b.lng - a.lng;
+  const dy = b.lat - a.lat;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return haversine(p.lat, p.lng, a.lat, a.lng);
+  const t = Math.max(0, Math.min(1, ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / lenSq));
+  return haversine(p.lat, p.lng, a.lat + t * dy, a.lng + t * dx);
+}
 
 function minDistanceToRouteKm(point: { lat: number; lng: number }, routePoints: Array<{ lat: number; lng: number }>): number {
   if (routePoints.length === 0) return Number.POSITIVE_INFINITY;
+  if (routePoints.length === 1) return haversine(point.lat, point.lng, routePoints[0].lat, routePoints[0].lng);
   let min = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < routePoints.length; i++) {
-    const p = routePoints[i];
-    const d = haversine(point.lat, point.lng, p.lat, p.lng);
+  for (let i = 0; i < routePoints.length - 1; i++) {
+    const d = pointToSegmentDistanceKm(point, routePoints[i], routePoints[i + 1]);
     if (d < min) min = d;
   }
   return min;
@@ -79,7 +96,8 @@ function normalizarNumero(raw: string): string {
 export function ActiveRouteScreen({ navigation, route }: Props) {
   const { settings } = useSettings();
   const { status, user, requireUserId } = useAuth();
-  const { setRouteActive, schedulePostRouteIfEnabled, notifyExtremeWeather } = useHydrationReminders();
+  const { setRouteActive, setActiveRouteProgress, resetActiveRouteProgress, schedulePostRouteIfEnabled, notifyExtremeWeather } =
+    useHydrationReminders();
   const gps = useGPS();
 
   const tipo = route.params?.tipo ?? 'senderismo';
@@ -123,13 +141,13 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
   const reroutingRef = useRef(false);
   const lastRerouteAtRef = useRef(0);
   const progressRef = useRef<{ at: number; distToDestKm: number } | null>(null);
+  const lastDistancePointRef = useRef<{ lat: number; lng: number } | null>(null);
+  const maybeRecalculateRouteRef = useRef<(point: { lat: number; lng: number }) => void>(() => {});
 
   const calorias = useMemo(() => {
-    const MET = tipo === 'ciclismo' ? 8.0 : 3.5;
     const pesoKg = user?.peso != null && user.peso > 0 ? Number(user.peso) : 70;
-    const horas = elapsedSec / 3600;
-    return Math.round(MET * pesoKg * horas);
-  }, [elapsedSec, tipo, user?.peso]);
+    return Math.round(calcularCalorias(distKm, pesoKg, tipo));
+  }, [distKm, tipo, user?.peso]);
 
   const region = useMemo(() => {
     if (!current) return undefined;
@@ -151,11 +169,12 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       setRouteAdviceLoading(true);
       const climaCondicion = String(lastKnownClimate.condicion ?? 'Sin datos');
       const temperatura = lastKnownClimate.temperaturaC;
+      const mesStats = await getMonthStats().catch(() => ({ km: 0, calorias: 0, tiempoSegundos: 0, rutas: 0 }));
       const recommendation = await requestRouteAdvice({
         kmHoy: distKm,
         caloriasHoy: calorias,
-        rutasMes: 1,
-        kmMes: distKm,
+        rutasMes: mesStats.rutas,
+        kmMes: mesStats.km,
         clima: climaCondicion,
         temperatura,
         hora: new Date().getHours(),
@@ -226,24 +245,57 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     [destination, paused, plannedRoutePoints, recalculateRoute]
   );
 
+  useEffect(() => {
+    maybeRecalculateRouteRef.current = maybeRecalculateRoute;
+  }, [maybeRecalculateRoute]);
+
+  const trimPlannedRoute = useCallback((userPos: { lat: number; lng: number }) => {
+    setPlannedRoutePoints((prev) => {
+      if (prev.length < 2) return prev;
+      let bestIdx = 0;
+      let bestDist = haversine(userPos.lat, userPos.lng, prev[0].lat, prev[0].lng);
+      for (let i = 1; i < prev.length; i++) {
+        const d = haversine(userPos.lat, userPos.lng, prev[i].lat, prev[i].lng);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+      }
+      // Solo recortar si el usuario está cerca de la ruta planificada
+      if (bestDist > OFF_ROUTE_THRESHOLD_KM * 2) return prev;
+      return bestIdx > 0 ? prev.slice(bestIdx) : prev;
+    });
+  }, []);
+
   const onGpsUpdate = useCallback((point: GPSPoint) => {
     if (paused) return;
     const next = { lat: point.lat, lng: point.lng };
     setHeading(point.heading);
     setCurrent(next);
+    setDistKm((prevDistKm) => {
+      const last = lastDistancePointRef.current;
+      if (!last) {
+        lastDistancePointRef.current = next;
+        return prevDistKm;
+      }
+      const delta = haversine(last.lat, last.lng, next.lat, next.lng);
+      const lowAccuracy = Number.isFinite(point.accuracyM) && Number(point.accuracyM) > 80;
+      if (lowAccuracy || delta < MIN_DISTANCE_DELTA_KM || delta > MAX_DISTANCE_DELTA_KM) {
+        return prevDistKm;
+      }
+      lastDistancePointRef.current = next;
+      return prevDistKm + delta;
+    });
     setPoints((prev) => {
       if (!prev.length) return [next];
       const last = prev[prev.length - 1];
       const delta = haversine(last.lat, last.lng, next.lat, next.lng);
-      if (delta >= 0.01) {
-        setDistKm((d) => d + delta);
+      if (delta >= MIN_TRAIL_POINT_DELTA_KM) {
         const appended = [...prev, next];
         return appended.length > MAX_TRAIL_POINTS ? appended.slice(-MAX_TRAIL_POINTS) : appended;
       }
       return prev;
     });
-    maybeRecalculateRoute(next);
-  }, [maybeRecalculateRoute, paused]);
+    trimPlannedRoute(next);
+    maybeRecalculateRouteRef.current(next);
+  }, [paused, trimPlannedRoute]);
 
   useEffect(() => {
     reroutingRef.current = false;
@@ -356,6 +408,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     try {
       setLoading(true);
       setRouteActive(true);
+      setActiveRouteProgress({ distanciaKm: 0, calorias: 0, tiempoSegundos: 0, tipo });
 
       const baseUrl = (settings.apiBaseUrl ?? '').trim();
       const weather = baseUrl ? await detectExtremeWeather(baseUrl) : { shouldAlert: false, message: '', clima: null };
@@ -384,6 +437,8 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       setStartPoint(start);
       setHeading(initial.heading);
       setPoints([start]);
+      setDistKm(0);
+      lastDistancePointRef.current = start;
       const startTs = Date.now();
       setStartedAt(startTs);
       setElapsedSec(0);
@@ -411,7 +466,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         const act = await apiRequest<ActivityStartResponse>(
           baseUrl,
           `/actividades/iniciar?usuarioId=${usuarioId}&rutaId=${route.params?.rutaId ?? ''}&tipo=${tipo}`,
-          { method: 'POST' }
+          { method: 'POST', token: user?.token }
         );
         setActivityId(Number(act.id));
       }
@@ -433,9 +488,19 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     return () => {
       gps.stopTracking();
       setRouteActive(false);
+      resetActiveRouteProgress();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    setActiveRouteProgress({
+      distanciaKm: distKm,
+      calorias,
+      tiempoSegundos: elapsedSec,
+      tipo,
+    });
+  }, [calorias, distKm, elapsedSec, setActiveRouteProgress, tipo]);
 
   React.useEffect(() => {
     if (!startedAt || paused) return;
@@ -448,6 +513,10 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     setPaused(nextPaused);
     if (nextPaused) {
       gps.stopTracking();
+      // Conservar el último punto conocido para que al reanudar
+      // el primer fix GPS calcule el delta desde aquí y no lo descarte.
+      // El filtro MAX_DISTANCE_DELTA_KM protege ante saltos irreales.
+      if (current) lastDistancePointRef.current = current;
       return;
     }
     await gps.startTracking(onGpsUpdate);
@@ -466,7 +535,15 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       setShowFinishModal(false);
       const baseUrl = (settings.apiBaseUrl ?? '').trim();
       if (saveToDb && activityId && baseUrl) {
-        await apiRequest(baseUrl, `/actividades/${activityId}/finalizar`, { method: 'PUT' });
+        await apiRequest(baseUrl, `/actividades/${activityId}/finalizar`, {
+          method: 'PUT',
+          token: user?.token,
+          body: JSON.stringify({
+            distanciaKm: distKm,
+            calorias,
+            tiempoSegundos: elapsedSec,
+          }),
+        });
       }
 
       const today = new Date();
@@ -483,7 +560,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
             distanciaKm: distKm,
             calorias,
             tipo,
-          });
+          }, user.token);
         } catch {
           Alert.alert('Sincronización', 'No se pudo sincronizar al servidor, pero tu ruta sí se guardó en el celular.');
         }
@@ -491,6 +568,7 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
 
       await schedulePostRouteIfEnabled();
       setRouteActive(false);
+      resetActiveRouteProgress();
 
       const nivelActual = route.params?.nivelSeguridad ?? '—';
       let floraTotal = 0;

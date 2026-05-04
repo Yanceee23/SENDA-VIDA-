@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -34,9 +35,14 @@ public class ActividadController {
     }
 
     @PutMapping("/{id}/finalizar")
-    public ResponseEntity<?> finalizar(@PathVariable Long id) {
+    public ResponseEntity<?> finalizar(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body) {
         try {
-            var a = actividadService.finalizar(id);
+            var a = actividadService.finalizar(
+                id,
+                toBigDecimal(body, "distanciaKm"),
+                toBigDecimal(body, "calorias"),
+                toInteger(body, "tiempoSegundos")
+            );
             Map<String, Object> res = new LinkedHashMap<>();
             res.put("id", a.getId());
             res.put("tipo", a.getTipo());
@@ -48,6 +54,22 @@ public class ActividadController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         }
+    }
+
+    private BigDecimal toBigDecimal(Map<String, Object> body, String key) {
+        if (body == null || body.get(key) == null) return null;
+        Object raw = body.get(key);
+        if (raw instanceof Number n) return BigDecimal.valueOf(n.doubleValue());
+        String value = String.valueOf(raw).trim();
+        return value.isEmpty() ? null : new BigDecimal(value);
+    }
+
+    private Integer toInteger(Map<String, Object> body, String key) {
+        if (body == null || body.get(key) == null) return null;
+        Object raw = body.get(key);
+        if (raw instanceof Number n) return n.intValue();
+        String value = String.valueOf(raw).trim();
+        return value.isEmpty() ? null : Integer.parseInt(value);
     }
 
     @GetMapping("/activa/{usuarioId}")

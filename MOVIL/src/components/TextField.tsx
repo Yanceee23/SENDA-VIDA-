@@ -13,6 +13,9 @@ export function TextField({
   keyboardType,
   secureTextEntry,
   autoCapitalize,
+  autoCorrect,
+  error,
+  hint,
 }: {
   label: string;
   value: string;
@@ -21,8 +24,12 @@ export function TextField({
   keyboardType?: 'default' | 'email-address' | 'numeric';
   secureTextEntry?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  autoCorrect?: boolean;
+  error?: string;
+  hint?: string;
 }) {
   const { settings } = useSettings();
+  const effectiveAutoCorrect = autoCorrect !== undefined ? autoCorrect : !secureTextEntry;
   return (
     <View style={styles.wrap}>
       <Text style={[styles.label, { fontSize: scaleFont(14, settings.fontScale) }]}>{label}</Text>
@@ -34,8 +41,23 @@ export function TextField({
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
         autoCapitalize={autoCapitalize ?? 'none'}
-        style={[styles.input, { fontSize: scaleFont(16, settings.fontScale) }]}
+        autoCorrect={effectiveAutoCorrect}
+        style={[
+          styles.input,
+          { fontSize: scaleFont(16, settings.fontScale) },
+          error?.trim() ? { borderColor: colors.danger } : null,
+        ]}
       />
+      {hint && !error ? (
+        <Text style={[styles.hint, { fontSize: scaleFont(12, settings.fontScale) }]} accessibilityRole="text">
+          {hint}
+        </Text>
+      ) : null}
+      {error?.trim() ? (
+        <Text style={[styles.error, { fontSize: scaleFont(12, settings.fontScale) }]} accessibilityRole="alert">
+          {error.trim()}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -43,6 +65,8 @@ export function TextField({
 const styles = StyleSheet.create({
   wrap: { gap: 8 },
   label: { color: colors.text, fontWeight: '700', fontFamily },
+  hint: { color: colors.muted, fontWeight: '600', fontFamily, marginTop: -2 },
+  error: { color: colors.danger, fontWeight: '700', fontFamily, marginTop: -2 },
   input: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

@@ -118,7 +118,7 @@ export function SettingsScreen() {
 
         <View style={styles.presetRow}>
           <MiniButton
-            title="Usar Wi‑Fi (PC)"
+            title="Producción (Render)"
             onPress={() => setApiBaseUrlDraft(DEFAULT_API_BASE_URL)}
           />
           <MiniButton

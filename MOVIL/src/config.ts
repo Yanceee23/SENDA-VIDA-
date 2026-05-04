@@ -1,10 +1,11 @@
 // Viene del .env (EXPO_PUBLIC_API_BASE_URL).
 const ENV_API_BASE_URL = String(process.env.EXPO_PUBLIC_API_BASE_URL ?? '').trim();
 
+export const PRODUCTION_API_BASE_URL = 'https://senda-vida.onrender.com/api';
 // Dirección típica del backend desde el emulador Android (10.0.2.2 = host). En físico mejor el env.
 export const EMULATOR_API_BASE_URL = 'http://10.0.2.2:8084/api';
-// Sin env, en la app tienen que ponerla en Ajustes.
-export const DEFAULT_API_BASE_URL = ENV_API_BASE_URL ? normalizeApiBaseUrl(ENV_API_BASE_URL) : '';
+// Sin env, la app apunta al backend de producción en Render.
+export const DEFAULT_API_BASE_URL = normalizeApiBaseUrl(ENV_API_BASE_URL || PRODUCTION_API_BASE_URL);
 
 // Ponemos http/https, puerto 8084 si falta en local/IP y el sufijo /api.
 export function normalizeApiBaseUrl(raw: string): string {
@@ -27,6 +28,16 @@ export function normalizeApiBaseUrl(raw: string): string {
 export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
 // Endpoint v1beta de la API Gemini (REST).
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
+function toPositiveNumberOrDefault(raw: string | undefined, defaultValue: number): number {
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
+}
+
+export const GBIF_SEARCH_RADIUS_KM = toPositiveNumberOrDefault(
+  process.env.EXPO_PUBLIC_GBIF_SEARCH_RADIUS_KM,
+  2
+);
 
 // Si uno falla o se satura (429), se prueba el siguiente de la lista.
 export const GEMINI_MODELS = [

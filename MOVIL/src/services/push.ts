@@ -40,12 +40,15 @@ export async function syncFcmTokenToBackend(params: { baseUrl: string; authToken
   const prev = await getJson<StoredPushToken>(STORAGE_KEYS.pushToken);
   if (prev?.userId === params.userId && prev?.token === deviceToken) return;
 
-  await apiRequest(params.baseUrl, '/auth/fcm-token', {
-    method: 'PUT',
-    token: params.authToken,
-    body: JSON.stringify({ userId: params.userId, token: deviceToken }),
-  });
-
-  await setJson(STORAGE_KEYS.pushToken, { userId: params.userId, token: deviceToken });
+  try {
+    await apiRequest(params.baseUrl, '/auth/fcm-token', {
+      method: 'PUT',
+      token: params.authToken,
+      body: JSON.stringify({ userId: params.userId, token: deviceToken }),
+    });
+    await setJson(STORAGE_KEYS.pushToken, { userId: params.userId, token: deviceToken });
+  } catch {
+    // No debe bloquear login ni causar rechazos no manejados; se reintentará en el próximo arranque.
+  }
 }
 

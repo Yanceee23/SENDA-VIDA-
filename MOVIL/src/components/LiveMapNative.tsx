@@ -116,7 +116,13 @@ export default function LiveMapNative({
 
   const routeSig = useMemo(() => {
     const pr = safePlannedRoutePoints;
-    if (pr.length >= 8) return `n=${pr.length}:${pr[0].lat}:${pr[0].lng}:${pr[pr.length - 1].lat}:${pr[pr.length - 1].lng}`;
+    if (pr.length >= 8) {
+      // Usar solo el destino (último punto) como firma: el trimming elimina
+      // puntos por el inicio, no por el final, así que la firma no cambia
+      // durante el recorte progresivo y el auto-fit no se dispara en cada update.
+      const last = pr[pr.length - 1];
+      return `dest:${last.lat.toFixed(5)},${last.lng.toFixed(5)}`;
+    }
     return pr.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|');
   }, [safePlannedRoutePoints]);
 
@@ -193,8 +199,11 @@ export default function LiveMapNative({
 
   const zoom = deltaToZoom(region.latitudeDelta);
 
-  const useNativeFollow =
-    interactionMode === 'follow_zoom' && Boolean(followUserLocation && permissionOk);
+  const useNativeFollow = Boolean(
+    followUserLocation &&
+      permissionOk &&
+      ((interactionMode === 'follow_zoom') || (navMode && navFollowUser && !routeNavUserMoved))
+  );
 
   const cameraHeading = navMode ? 0 : Number.isFinite(Number(heading)) ? Number(heading) : 0;
   const navFollowZoom = 16;
@@ -229,7 +238,7 @@ export default function LiveMapNative({
           defaultSettings={navMode ? navDefaultSettings : undefined}
           followUserLocation={useNativeFollow}
           followUserMode={UserTrackingMode.FollowWithHeading}
-          followZoomLevel={zoom}
+          followZoomLevel={navMode ? navFollowZoom : zoom}
           centerCoordinate={navMode || useNativeFollow ? undefined : [region.longitude, region.latitude]}
           zoomLevel={navMode || useNativeFollow ? undefined : zoom}
           heading={cameraHeading}
@@ -296,6 +305,7 @@ export default function LiveMapNative({
                     animationDuration: 650,
                   });
                 }
+                setNavFollowUser(true);
                 setRouteNavUserMoved(false);
               }}
             >

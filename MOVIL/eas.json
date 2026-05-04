@@ -34,6 +34,7 @@
       },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://senda-vida.onrender.com/api",
+        "EXPO_PUBLIC_GBIF_SEARCH_RADIUS_KM": "2",
         "EAS_BUILD_DISABLE_NPM_CACHE": "1"
       },
       "android": {

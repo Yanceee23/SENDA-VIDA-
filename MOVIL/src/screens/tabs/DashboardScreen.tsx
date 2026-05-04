@@ -18,6 +18,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { Screen } from '../../components/Screen';
 import { useAuth } from '../../state/AuthContext';
+import { useHydrationReminders } from '../../state/HydrationRemindersContext';
 import { useSettings } from '../../state/SettingsContext';
 import { colors } from '../../theme/colors';
 import type { AppStackParamList } from '../../types/navigation';
@@ -108,6 +109,7 @@ function parseRouteAdviceBlocks(response: string): RouteAdviceBlock[] {
 export function DashboardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const { status, user } = useAuth();
+  const { routeActive, activeRouteProgress } = useHydrationReminders();
   const { settings } = useSettings();
   const [clima, setClima] = useState<ClimaActual | null>(null);
   const [climaLoading, setClimaLoading] = useState(false);
@@ -324,6 +326,9 @@ export function DashboardScreen() {
     }, [])
   );
 
+  const kmHoyEnVivo = routeActive ? kmHoy + Number(activeRouteProgress.distanciaKm ?? 0) : kmHoy;
+  const caloriasHoyEnVivo = routeActive ? caloriasHoy + Number(activeRouteProgress.calorias ?? 0) : caloriasHoy;
+
   return (
     <Screen scroll contentStyle={styles.screen}>
       <RequireAccountModal
@@ -524,8 +529,8 @@ export function DashboardScreen() {
       </Card>
 
       <View style={styles.metricsRow}>
-        <MetricCard icon="📍" value={kmHoy.toFixed(2)} label="Km hoy" />
-        <MetricCard icon="🔥" value={`${Math.round(caloriasHoy)}`} label="Calorías hoy" />
+        <MetricCard icon="📍" value={kmHoyEnVivo.toFixed(2)} label={routeActive ? 'Km hoy (en vivo)' : 'Km hoy'} />
+        <MetricCard icon="🔥" value={`${Math.round(caloriasHoyEnVivo)}`} label="Calorías hoy" />
       </View>
       <View style={styles.metricsRow}>
         <MetricCard icon="🗓️" value={kmMes.toFixed(2)} label="Km este mes" />

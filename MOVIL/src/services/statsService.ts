@@ -91,10 +91,11 @@ export async function addTodayStats(km: number, calorias: number, tiempoSegundos
   return nextDay;
 }
 
-export async function syncStatsToBackend(baseUrl: string, payload: SaveRouteStatsInput): Promise<void> {
+export async function syncStatsToBackend(baseUrl: string, payload: SaveRouteStatsInput, token?: string): Promise<void> {
   if (!payload.userId) return;
   await apiRequest(baseUrl, '/estadisticas', {
     method: 'POST',
+    token,
     body: JSON.stringify(payload),
   });
 }

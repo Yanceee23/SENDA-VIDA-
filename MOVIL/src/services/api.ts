@@ -4,10 +4,35 @@ export type ApiError = {
   details?: unknown;
 };
 
+/** Mensaje legible para Alertas/UI a partir del error lanzado por apiRequest() u otros Error. */
+export function formatApiErrorMessage(e: unknown): string {
+  if (e != null && typeof e === 'object' && 'message' in e && typeof (e as ApiError).message === 'string') {
+    return (e as ApiError).message;
+  }
+  if (e instanceof Error) return e.message || 'Error desconocido.';
+  const s = String(e ?? '').trim();
+  return s || 'Error desconocido.';
+}
+
+/** Título/contexto opcional por código HTTP para mensajes al usuario */
+export function userFacingHttpHint(status: number): string | null {
+  if (status === 400) return 'Revisa los datos e inténtalo de nuevo.';
+  if (status === 401) return 'Sesión caducada o no autorizada. Inicia sesión de nuevo.';
+  if (status === 403) return 'No tienes permiso para esta acción.';
+  if (status === 404) return 'No se encontró el recurso en el servidor. ¿La dirección API es correcta?';
+  if (status >= 500) return 'El servidor tiene un problema. Prueba más tarde.';
+  return null;
+}
+
 let onUnauthorized: (() => void) | null = null;
+let authToken: string | null = null;
 
 export function setOnUnauthorizedCallback(cb: (() => void) | null) {
   onUnauthorized = cb;
+}
+
+export function setApiAuthToken(token: string | null) {
+  authToken = token && token.trim() ? token.trim() : null;
 }
 
 async function parseJsonSafe(res: Response): Promise<any> {
@@ -43,7 +68,8 @@ export async function apiRequest<T>(
   if (!headers.has('Content-Type') && options.body && !isFormData) {
     headers.set('Content-Type', 'application/json');
   }
-  if (options.token) headers.set('Authorization', `Bearer ${options.token}`);
+  const requestToken = options.token ?? authToken;
+  if (requestToken) headers.set('Authorization', `Bearer ${requestToken}`);
 
   const timeoutMs = options.timeoutMs ?? 240000;
   const controller = new AbortController();

@@ -62,6 +62,7 @@ Edita el archivo `.env` con tus valores:
 | Variable | Descripción |
 |----------|-------------|
 | `EXPO_PUBLIC_API_BASE_URL` | URL del backend. En celular físico: IP de tu PC en la misma Wi-Fi (ej: `http://192.168.1.100:8084/api`). En emulador Android: `http://10.0.2.2:8084/api` |
+| `EXPO_PUBLIC_GBIF_SEARCH_RADIUS_KM` | Radio (km) para filtrar especies GBIF alrededor del GPS actual. Valor por defecto: `2`. |
 | `EXPO_PUBLIC_GEMINI_API_KEY` | API Key de Gemini (consíguela gratis en https://aistudio.google.com) |
 
 Luego instala dependencias e inicia:
