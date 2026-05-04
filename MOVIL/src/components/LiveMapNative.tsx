@@ -58,6 +58,7 @@ const MAX_RENDER_TRAIL_PTS = 200;
 const MIN_CAMERA_MOVE_KM = 0.008; // ~8m
 const NAV_CAMERA_MIN_INTERVAL_MS = 1200;
 const FOLLOW_CAMERA_MIN_INTERVAL_MS = 900;
+const PROGRAMMATIC_CAMERA_GUARD_MS = 250;
 
 /**
  * Reduce la cantidad de puntos conservando primero y último.
@@ -70,6 +71,15 @@ function decimatePoints(pts: LatLng[], maxPts: number): LatLng[] {
   for (let i = 0; i < pts.length - 1; i += step) out.push(pts[i]);
   out.push(pts[pts.length - 1]);
   return out;
+}
+
+function getNavFollowZoomByDistance(current: LatLng | null, destination: LatLng | null): number {
+  if (!current || !destination) return 16;
+  const distKm = haversine(current.lat, current.lng, destination.lat, destination.lng);
+  if (distKm <= 0.12) return 17;
+  if (distKm <= 0.8) return 16;
+  if (distKm <= 3) return 15;
+  return 14;
 }
 
 /** Expande muy poco bbox para rutas rectas muy cortas */
@@ -102,6 +112,7 @@ export default function LiveMapNative({
   const [mapReady, setMapReady] = useState(false);
   const autoFitRanForSig = useRef<string>('');
   const fittingRef = useRef(false);
+  const programmaticCameraUntilRef = useRef(0);
   const lastCameraUpdateAtRef = useRef(0);
   const lastCameraPosRef = useRef<LatLng | null>(null);
   const [routeNavUserMoved, setRouteNavUserMoved] = useState(false);
@@ -263,6 +274,7 @@ export default function LiveMapNative({
   const onRegionUserChange = useCallback(
     (feature: GeoJSON.Feature<GeoJSON.Point, { isUserInteraction?: boolean }>) => {
       if (!navMode) return;
+      if (Date.now() < programmaticCameraUntilRef.current) return;
       const isUser = Boolean(feature.properties?.isUserInteraction);
       if (isUser) {
         markUserMovedMap();
@@ -283,30 +295,42 @@ export default function LiveMapNative({
   );
 
   const cameraHeading = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
-  const navFollowZoom = 16;
+  const navFollowZoom = useMemo(
+    () => getNavFollowZoomByDistance(safeCurrent, safeDestination),
+    [safeCurrent, safeDestination]
+  );
   const displayStartPoint = normalizeLatLng(startPoint, false) ?? safePoints[0] ?? safePlannedRoutePoints[0] ?? null;
+
+  const runProgrammaticCamera = useCallback((durationMs: number, action: () => void) => {
+    programmaticCameraUntilRef.current = Date.now() + durationMs + PROGRAMMATIC_CAMERA_GUARD_MS;
+    action();
+  }, []);
 
   useEffect(() => {
     if (!navMode || !mapReady || routeNavUserMoved || !navFollowUser || !safeCurrent) return;
     if (!shouldUpdateCamera(safeCurrent, NAV_CAMERA_MIN_INTERVAL_MS)) return;
-    cameraRef.current?.setCamera({
-      centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
-      zoomLevel: navFollowZoom,
-      heading: cameraHeading,
-      animationDuration: 650,
+    runProgrammaticCamera(650, () => {
+      cameraRef.current?.setCamera({
+        centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
+        zoomLevel: navFollowZoom,
+        heading: cameraHeading,
+        animationDuration: 650,
+      });
     });
-  }, [cameraHeading, mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent, shouldUpdateCamera]);
+  }, [cameraHeading, mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent, shouldUpdateCamera, navFollowZoom, runProgrammaticCamera]);
 
   useEffect(() => {
     if (navMode || !mapReady || !safeCurrent) return;
     if (!shouldUpdateCamera(safeCurrent, FOLLOW_CAMERA_MIN_INTERVAL_MS)) return;
-    cameraRef.current?.setCamera({
-      centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
-      zoomLevel: zoom,
-      heading: cameraHeading,
-      animationDuration: 500,
+    runProgrammaticCamera(500, () => {
+      cameraRef.current?.setCamera({
+        centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
+        zoomLevel: zoom,
+        heading: cameraHeading,
+        animationDuration: 500,
+      });
     });
-  }, [cameraHeading, mapReady, navMode, safeCurrent, zoom, shouldUpdateCamera]);
+  }, [cameraHeading, mapReady, navMode, safeCurrent, zoom, shouldUpdateCamera, runProgrammaticCamera]);
 
   const navDefaultSettings = useMemo(
     () => ({
@@ -420,11 +444,13 @@ export default function LiveMapNative({
               style={({ pressed }) => [styles.navFab, styles.navFabSecondary, pressed && styles.navFabPressed]}
               onPress={() => {
                 if (safeCurrent) {
-                  cameraRef.current?.setCamera({
-                    centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
-                    zoomLevel: navFollowZoom,
-                    heading: cameraHeading,
-                    animationDuration: 650,
+                  runProgrammaticCamera(650, () => {
+                    cameraRef.current?.setCamera({
+                      centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
+                      zoomLevel: navFollowZoom,
+                      heading: cameraHeading,
+                      animationDuration: 650,
+                    });
                   });
                 }
                 setNavFollowUser(true);
@@ -443,7 +469,9 @@ export default function LiveMapNative({
               fittingRef.current = true;
               setNavFollowUser(false);
               setRouteNavUserMoved(true);
-              fitRouteFrame(1200);
+              setTimeout(() => {
+                runProgrammaticCamera(1200, () => fitRouteFrame(1200));
+              }, 40);
               setTimeout(() => {
                 fittingRef.current = false;
               }, 1300);
