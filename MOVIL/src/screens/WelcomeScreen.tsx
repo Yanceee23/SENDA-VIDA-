@@ -41,8 +41,8 @@ export function WelcomeScreen({ navigation }: Props) {
         <View style={{ flex: 1 }} />
 
         <View style={styles.bottom}>
-          <LargeButton title="Comenzar" onPress={() => navigation.navigate('Register')} variant="primary" />
-          <LargeButton title="Ya tengo cuenta" onPress={() => navigation.navigate('Login')} variant="outlinePrimary" />
+          <LargeButton title="Ya tengo cuenta" onPress={() => navigation.navigate('Login')} variant="primary" />
+          <LargeButton title="Crear cuenta" onPress={() => navigation.navigate('Register')} variant="outlinePrimary" />
           <Pressable onPress={() => continueAsGuest()} accessibilityRole="button">
             <Text style={styles.guestLink}>Continuar como invitado</Text>
           </Pressable>

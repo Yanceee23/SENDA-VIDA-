@@ -7,6 +7,8 @@ import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import { LiveMap } from '../components/LiveMap';
 import { apiRequest, formatApiErrorMessage, toQuery } from '../services/api';
+import { getOsrmRoute } from '../services/osrmService';
+import { useAuth } from '../state/AuthContext';
 import { useSettings } from '../state/SettingsContext';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
@@ -51,6 +53,7 @@ function resultKey(item: SearchResult | null): string {
 
 export function NavigateToPlaceScreen() {
   const { settings } = useSettings();
+  const { status, user } = useAuth();
   const route = useRoute<any>();
   const params = (route?.params ?? {}) as { destLat?: number; destLng?: number; destNombre?: string };
 
@@ -135,20 +138,37 @@ export function NavigateToPlaceScreen() {
   };
 
   const onRoute = useCallback(async () => {
-    if (!me) return Alert.alert('Ruta', 'Activa el GPS del celular para calcular la ruta.');
     if (!dest) return Alert.alert('Ruta', 'Selecciona un destino.');
+    let current = me;
+    if (!current) {
+      try {
+        const perm = await Location.requestForegroundPermissionsAsync();
+        if (perm.status !== 'granted') {
+          setGpsOk(false);
+          return Alert.alert('Ruta', 'Activa el GPS del celular para calcular la ruta.');
+        }
+        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setGpsOk(true);
+        setMe(current);
+      } catch {
+        setGpsOk(false);
+        return Alert.alert('Ruta', 'No pudimos obtener tu ubicación actual. Revisa permisos de GPS e inténtalo de nuevo.');
+      }
+    }
+
     try {
       setRouting(true);
       const res = await apiRequest<RouteRes>(
         settings.apiBaseUrl,
         `/geo/route${toQuery({
-          startLat: me.lat,
-          startLng: me.lng,
+          startLat: current.lat,
+          startLng: current.lng,
           endLat: dest.lat,
           endLng: dest.lng,
           profile,
         })}`,
-        { method: 'GET', timeoutMs: 90_000 }
+        { method: 'GET', timeoutMs: 90_000, token: status === 'signedIn' ? user?.token : undefined }
       );
       if (res?.error) {
         Alert.alert('Ruta', String(res.error));
@@ -161,11 +181,38 @@ export function NavigateToPlaceScreen() {
         durationS: res.duration_s != null ? Number(res.duration_s) : undefined,
       });
     } catch (error: unknown) {
-      Alert.alert('Ruta', formatApiErrorMessage(error));
+      const message = formatApiErrorMessage(error);
+      const fallbackEligible =
+        typeof message === 'string' &&
+        /(no autenticado|no autorizado|sesión caducada|401)/i.test(message);
+
+      if (fallbackEligible) {
+        try {
+          const osrm = await getOsrmRoute({
+            mode: profile === 'cycling' ? 'bike' : 'foot',
+            startLat: current.lat,
+            startLng: current.lng,
+            endLat: dest.lat,
+            endLng: dest.lng,
+          });
+          setRoutePoints(osrm.geometry);
+          setRouteMeta({
+            distanceM: osrm.distanceKm * 1000,
+            durationS: osrm.durationMin * 60,
+          });
+          Alert.alert('Ruta', 'Se calculó la ruta con el servicio de respaldo. Vuelve a iniciar sesión para guardar y sincronizar.');
+          return;
+        } catch (fallbackError: unknown) {
+          Alert.alert('Ruta', formatApiErrorMessage(fallbackError));
+          return;
+        }
+      }
+
+      Alert.alert('Ruta', message);
     } finally {
       setRouting(false);
     }
-  }, [dest, me, profile, settings.apiBaseUrl]);
+  }, [dest, me, profile, settings.apiBaseUrl, status, user?.token]);
 
   useEffect(() => {
     if (!normalizeLatLng({ lat: params.destLat, lng: params.destLng })) return;
