@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapLibreGL, { CameraRef, UserTrackingMode } from '@maplibre/maplibre-react-native';
 import { colors } from '../theme/colors';
 import type { LatLng } from '../utils/gps';
@@ -152,7 +152,15 @@ export default function LiveMapNative({
     const out: LatLng[] = [];
     const pr = safePlannedRoutePoints;
     if (pr.length >= 2) {
-      for (const p of pr) out.push(p);
+      // Para calcular bbox solo necesitamos cubrir los extremos;
+      // muestreamos para no iterar miles de puntos en el JS thread.
+      if (pr.length > 150) {
+        const step = Math.ceil(pr.length / 80);
+        for (let i = 0; i < pr.length; i += step) out.push(pr[i]);
+        out.push(pr[pr.length - 1]);
+      } else {
+        for (const p of pr) out.push(p);
+      }
     } else if (safePoints.length >= 2) {
       const tail = safePoints.length > 80 ? safePoints.slice(-80) : safePoints;
       for (const p of tail) out.push(p);
@@ -164,18 +172,21 @@ export default function LiveMapNative({
 
   const fitRouteFrame = useCallback(
     (animationMs: number) => {
-      const cam = cameraRef.current;
-      if (!cam) return;
-      const pts = collectNavPoints();
-      if (pts.length < 2) return;
-      let box = bboxFrom(pts);
-      if (!box) return;
-      const spanLat = Math.abs(box.ne[1] - box.sw[1]);
-      const spanLng = Math.abs(box.ne[0] - box.sw[0]);
-      if (spanLat < 0.04 || spanLng < 0.04) {
-        box = padTinyBox(box);
-      }
-      cam.fitBounds(box.ne, box.sw, [100, 60, 200, 60], animationMs);
+      // Diferir al siguiente frame libre para no bloquear el hilo principal.
+      InteractionManager.runAfterInteractions(() => {
+        const cam = cameraRef.current;
+        if (!cam) return;
+        const pts = collectNavPoints();
+        if (pts.length < 2) return;
+        let box = bboxFrom(pts);
+        if (!box) return;
+        const spanLat = Math.abs(box.ne[1] - box.sw[1]);
+        const spanLng = Math.abs(box.ne[0] - box.sw[0]);
+        if (spanLat < 0.04 || spanLng < 0.04) {
+          box = padTinyBox(box);
+        }
+        cam.fitBounds(box.ne, box.sw, [100, 60, 200, 60], animationMs);
+      });
     },
     [collectNavPoints]
   );
@@ -383,7 +394,7 @@ export default function LiveMapNative({
             onPress={() => {
               setNavFollowUser(false);
               setRouteNavUserMoved(true);
-              fitRouteFrame(3800);
+              fitRouteFrame(1200);
             }}
           >
             <Text style={styles.navFabText}>📍 Vista ruta</Text>
