@@ -556,10 +556,12 @@ export function DashboardScreen() {
         )}
       </Card>
 
-      {routeTracking.initializing && !sessionInline ? (
+      {(routeTracking.initializing || routeTracking.plannedRouteLoading) && !sessionInline ? (
         <Card style={styles.preparingCard}>
           <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={styles.preparingText}>Preparando GPS y ruta…</Text>
+          <Text style={styles.preparingText}>
+            {routeTracking.initializing ? 'Preparando GPS y ruta…' : 'Calculando trazado de la ruta…'}
+          </Text>
         </Card>
       ) : null}
 
@@ -606,6 +608,11 @@ export function DashboardScreen() {
               permissionOk={routeTracking.permissionGranted}
               interactionMode="follow_zoom"
             />
+            {routeTracking.plannedRouteLoading ? (
+              <View style={styles.mapRouteLoading} pointerEvents="none">
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null}
           </View>
           <View style={styles.liveStatsRow}>
             <Text style={styles.liveStat} accessibilityLabel={`Distancia ${formatKm(routeTracking.distKm)}`}>
@@ -812,7 +819,16 @@ const styles = StyleSheet.create({
   },
   precisionChipText: { color: colors.muted, fontWeight: '800', fontFamily, fontSize: 12 },
   precisionChipTextActive: { color: colors.primary, fontWeight: '900' },
-  liveMapBox: { height: 240, borderRadius: 16, overflow: 'hidden', backgroundColor: '#1C2B2A' },
+  liveMapBox: { height: 240, borderRadius: 16, overflow: 'hidden', backgroundColor: '#1C2B2A', position: 'relative' },
+  mapRouteLoading: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(28,43,42,0.85)',
+    zIndex: 4,
+  },
   liveStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   liveStat: { color: colors.text, fontWeight: '800', fontFamily, fontSize: 13 },
 

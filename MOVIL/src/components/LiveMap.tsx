@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
 import type { LatLng } from '../utils/gps';
-import type { MapInteractionMode } from './LiveMapNative';
+import type { LiveMapNativeProps, MapInteractionMode } from './LiveMapNative';
 import { OfflineSimpleMap } from './OfflineSimpleMap';
 
 type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
@@ -23,19 +23,15 @@ export type LiveMapProps = {
   interactionMode?: MapInteractionMode;
 };
 
-const LazyNativeLiveMap = React.lazy(() =>
-  import('./LiveMapNative').catch(() => ({
-    default: function MapFallback(props: {
-      region: Region;
-      points: LatLng[];
-      current: LatLng | null;
-      startPoint?: LatLng | null;
-      destination?: LatLng | null;
-      plannedRoutePoints?: LatLng[];
-    }) {
-      return <OfflineSimpleMap points={props.points} current={props.current} title="Mapa" />;
-    },
-  }))
+const LazyNativeLiveMap = React.lazy(
+  () =>
+    import('./LiveMapNative').catch(
+      (): { default: React.ComponentType<LiveMapNativeProps> } => ({
+        default: function MapFallback(props: LiveMapNativeProps) {
+          return <OfflineSimpleMap points={props.points} current={props.current} title="Mapa" />;
+        },
+      })
+    ) as Promise<{ default: React.ComponentType<LiveMapNativeProps> }>
 );
 
 class MapErrorBoundary extends Component<

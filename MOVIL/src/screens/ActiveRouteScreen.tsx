@@ -262,6 +262,14 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           permissionOk={tracking.permissionGranted}
           interactionMode="route_navigation"
         />
+        {tracking.initializing || tracking.plannedRouteLoading ? (
+          <View style={styles.mapLoading} pointerEvents="auto">
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.mapLoadingText}>
+              {tracking.initializing ? 'Preparando GPS…' : 'Calculando trazado de la ruta…'}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.mapOverlay}>
           <Text style={styles.gpsLabel}>GPS activo</Text>
           <Text style={styles.gpsTitle}>{route.params?.destNombre ? `Ruta a ${route.params.destNombre}` : tracking.routeTitle}</Text>
@@ -416,7 +424,16 @@ function Stat({ icon, label, value }: { icon: string; label: string; value: stri
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.bg },
   mapWrap: { flex: 6, backgroundColor: '#1C2B2A' },
-  mapOverlay: { position: 'absolute', left: 16, top: 16, gap: 2 },
+  mapLoading: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(28,43,42,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    zIndex: 5,
+  },
+  mapLoadingText: { color: '#E5E7EB', fontWeight: '800', fontFamily, fontSize: 14, textAlign: 'center', paddingHorizontal: 24 },
+  mapOverlay: { position: 'absolute', left: 16, top: 16, gap: 2, zIndex: 6 },
   gpsLabel: { color: '#D1D5DB', fontWeight: '700', fontFamily },
   gpsTitle: { color: 'white', fontWeight: '900', fontSize: 16, fontFamily },
   bottom: { flex: 4, marginTop: -18, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 18, gap: 12 },

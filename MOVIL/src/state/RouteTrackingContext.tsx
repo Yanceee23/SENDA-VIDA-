@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Alert } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
 import { useGPS, type GPSPoint, type GPSPrecisionMode } from '../hooks/useGPS';
 import { useAuth } from './AuthContext';
 import { useHydrationReminders } from './HydrationRemindersContext';
@@ -57,12 +57,12 @@ const MIN_DISTANCE_DELTA_KM = 0.0015;
 const MAX_DISTANCE_DELTA_KM = 0.25;
 const MIN_TRAIL_POINT_DELTA_KM = 0.0012;
 const MIN_TIMED_TRAIL_DELTA_KM = 0.00035;
-const TRAIL_POINT_INTERVAL_MS = 1_500;
+const TRAIL_POINT_INTERVAL_MS = 2_400;
 /** Lecturas con peor precisión no suman km pero no bloquean tanto el avance en senderismo */
 const GPS_MAX_ACCURACY_M = 115;
 /** Mantener polilíneas livianas para evitar bloqueos en dispositivos modestos */
-const MAX_TRAIL_POINTS = 450;
-const MAX_ROUTE_POINTS = 900;
+const MAX_TRAIL_POINTS = 260;
+const MAX_ROUTE_POINTS = 520;
 
 function decimatePolyline(points: Array<{ lat: number; lng: number }>, maxPoints: number): Array<{ lat: number; lng: number }> {
   if (points.length <= maxPoints) return points;
@@ -148,6 +148,8 @@ function trimRouteToRemaining(
 type RouteTrackingCtx = {
   sessionOrigin: RouteSessionOrigin | null;
   initializing: boolean;
+  /** OSRM / procesamiento del trazado en segundo plano (no bloquea el arranque del GPS). */
+  plannedRouteLoading: boolean;
   finishing: boolean;
   current: { lat: number; lng: number } | null;
   startPoint: { lat: number; lng: number } | null;
@@ -226,6 +228,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
 
   const [sessionOrigin, setSessionOrigin] = useState<RouteSessionOrigin | null>(null);
   const [initializing, setInitializing] = useState(false);
+  const [plannedRouteLoading, setPlannedRouteLoading] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
   const [startPoint, setStartPoint] = useState<{ lat: number; lng: number } | null>(null);
@@ -247,6 +250,9 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
 
   const reroutingRef = useRef(false);
   const lastRerouteAtRef = useRef(0);
+  /** Invalida peticiones OSRM en curso al cancelar o reiniciar sesión. */
+  const routeRequestEpochRef = useRef(0);
+  const lastTrimPlannedAtRef = useRef(0);
   const progressRef = useRef<{ at: number; distToDestKm: number } | null>(null);
   const lastDistancePointRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastTrailPointAtRef = useRef(0);
@@ -291,6 +297,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
 
   const resetInternalState = useCallback(() => {
     gps.stopTracking();
+    setPlannedRouteLoading(false);
     setSessionOrigin(null);
     setCurrent(null);
     setStartPoint(null);
@@ -316,6 +323,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
   }, [gps]);
 
   const cancelSession = useCallback(() => {
+    routeRequestEpochRef.current += 1;
     resetInternalState();
     setRouteActive(false);
     resetActiveRouteProgress();
@@ -379,7 +387,11 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
   }, [maybeRecalculateRoute]);
 
   const trimPlannedRoute = useCallback((userPos: { lat: number; lng: number }) => {
+    const now = Date.now();
+    if (now - lastTrimPlannedAtRef.current < 450) return;
+    lastTrimPlannedAtRef.current = now;
     setPlannedRoutePoints((prev) => {
+      if (prev.length < 2) return prev;
       return trimRouteToRemaining(userPos, prev);
     });
   }, []);
@@ -490,24 +502,6 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
         setElapsedSec(0);
 
         const tripMode = params.tipo === 'ciclismo' ? 'bike' : 'foot';
-        if (destinationCoords) {
-          try {
-            const routeData = await getOsrmRoute({
-              mode: tripMode,
-              startLat: start.lat,
-              startLng: start.lng,
-              endLat: destinationCoords.lat,
-              endLng: destinationCoords.lng,
-            });
-            const trimmedRoute = trimRouteToRemaining(start, routeData.geometry);
-            setPlannedRoutePoints(decimatePolyline(trimmedRoute, MAX_ROUTE_POINTS));
-            setPlannedDurationMin(routeData.durationMin);
-          } catch (e: unknown) {
-            setPlannedRoutePoints([]);
-            setPlannedDurationMin(null);
-            Alert.alert('Ruta', e instanceof Error ? e.message : 'No se pudo calcular la ruta.');
-          }
-        }
 
         const effectiveSaveToDb = status === 'signedIn' && user?.userId != null && params.saveToDb !== false;
 
@@ -527,6 +521,46 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
           cancelSession();
           return false;
         }
+
+        if (destinationCoords) {
+          const fetchEpoch = routeRequestEpochRef.current;
+          const startForOsrm = { lat: start.lat, lng: start.lng };
+          const dest = { lat: destinationCoords.lat, lng: destinationCoords.lng };
+          setPlannedRouteLoading(true);
+          const runOsrm = async () => {
+            try {
+              const routeData = await getOsrmRoute({
+                mode: tripMode,
+                startLat: startForOsrm.lat,
+                startLng: startForOsrm.lng,
+                endLat: dest.lat,
+                endLng: dest.lng,
+              });
+              if (routeRequestEpochRef.current !== fetchEpoch) return;
+              await new Promise<void>((resolve) => {
+                InteractionManager.runAfterInteractions(() => requestAnimationFrame(() => resolve()));
+              });
+              if (routeRequestEpochRef.current !== fetchEpoch) return;
+              const trimmedRoute = trimRouteToRemaining(startForOsrm, routeData.geometry);
+              const decimated = decimatePolyline(trimmedRoute, MAX_ROUTE_POINTS);
+              setPlannedRoutePoints(decimated);
+              setPlannedDurationMin(routeData.durationMin);
+            } catch (e: unknown) {
+              if (routeRequestEpochRef.current !== fetchEpoch) return;
+              setPlannedRoutePoints([]);
+              setPlannedDurationMin(null);
+              Alert.alert('Ruta', e instanceof Error ? e.message : 'No se pudo calcular la ruta.');
+            } finally {
+              if (routeRequestEpochRef.current === fetchEpoch) {
+                setPlannedRouteLoading(false);
+              }
+            }
+          };
+          InteractionManager.runAfterInteractions(() => {
+            void runOsrm();
+          });
+        }
+
         return true;
       } catch (e: unknown) {
         Alert.alert('Ruta', e instanceof Error ? e.message : 'No se pudo iniciar la ruta.');
@@ -731,6 +765,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
     () => ({
       sessionOrigin,
       initializing,
+      plannedRouteLoading,
       finishing,
       current,
       startPoint,
@@ -763,6 +798,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
     [
       sessionOrigin,
       initializing,
+      plannedRouteLoading,
       finishing,
       current,
       startPoint,

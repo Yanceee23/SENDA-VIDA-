@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapLibreGL, { CameraRef, UserTrackingMode } from '@maplibre/maplibre-react-native';
 import { colors } from '../theme/colors';
@@ -8,6 +8,22 @@ import { normalizeLatLng } from '../utils/coordinates';
 import { OfflineSimpleMap } from './OfflineSimpleMap';
 
 type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+function regionPropsEqual(a: Region, b: Region): boolean {
+  if (a === b) return true;
+  return (
+    a.latitude === b.latitude &&
+    a.longitude === b.longitude &&
+    a.latitudeDelta === b.latitudeDelta &&
+    a.longitudeDelta === b.longitudeDelta
+  );
+}
+
+function llEqual(a: LatLng | null | undefined, b: LatLng | null | undefined): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  return a.lat === b.lat && a.lng === b.lng;
+}
 
 /** Seguir usuario nativo (limita gestos). | Igual que “lugares”: zoom manual + encuar ruta cuando quieras. */
 export type MapInteractionMode = 'follow_zoom' | 'route_navigation';
@@ -53,8 +69,8 @@ function validMapPoints(coords: LatLng[] | undefined): LatLng[] {
 }
 
 /** Límites de puntos renderizados en el mapa para no congelar el hilo principal. */
-const MAX_RENDER_ROUTE_PTS = 350;
-const MAX_RENDER_TRAIL_PTS = 200;
+const MAX_RENDER_ROUTE_PTS = 220;
+const MAX_RENDER_TRAIL_PTS = 120;
 const MIN_CAMERA_MOVE_KM = 0.008; // ~8m
 const NAV_CAMERA_MIN_INTERVAL_MS = 1200;
 const FOLLOW_CAMERA_MIN_INTERVAL_MS = 900;
@@ -91,7 +107,7 @@ function padTinyBox(box: { ne: [number, number]; sw: [number, number] }) {
   };
 }
 
-export default function LiveMapNative({
+function LiveMapNative({
   region,
   points,
   current,
@@ -111,6 +127,7 @@ export default function LiveMapNative({
   const cameraRef = useRef<CameraRef>(null);
   const [mapReady, setMapReady] = useState(false);
   const autoFitRanForSig = useRef<string>('');
+  const navResetSigRef = useRef<string>('');
   const fittingRef = useRef(false);
   const programmaticCameraUntilRef = useRef(0);
   const lastCameraUpdateAtRef = useRef(0);
@@ -245,9 +262,11 @@ export default function LiveMapNative({
 
   useEffect(() => {
     if (!navMode) return;
+    if (navResetSigRef.current === routeSig) return;
+    navResetSigRef.current = routeSig;
     autoFitRanForSig.current = '';
-    setRouteNavUserMoved(false);
-    setNavFollowUser(true);
+    setRouteNavUserMoved((prev) => (prev ? false : prev));
+    setNavFollowUser((prev) => (prev ? prev : true));
   }, [routeSig, navMode]);
 
   useEffect(() => {
@@ -305,6 +324,22 @@ export default function LiveMapNative({
     programmaticCameraUntilRef.current = Date.now() + durationMs + PROGRAMMATIC_CAMERA_GUARD_MS;
     action();
   }, []);
+
+  /** Debe ejecutarse después de los efectos que resetean routeSig / follow, para ganar el estado final. */
+  const hadPlannedRouteRef = useRef(false);
+  useEffect(() => {
+    if (!navMode || !mapReady) return;
+    const n = safePlannedRoutePoints.length;
+    if (n < 2) {
+      hadPlannedRouteRef.current = false;
+      return;
+    }
+    if (hadPlannedRouteRef.current) return;
+    hadPlannedRouteRef.current = true;
+    setNavFollowUser(false);
+    setRouteNavUserMoved(true);
+    runProgrammaticCamera(1200, () => fitRouteFrame(1200));
+  }, [navMode, mapReady, safePlannedRoutePoints.length, fitRouteFrame, runProgrammaticCamera]);
 
   useEffect(() => {
     if (!navMode || !mapReady || routeNavUserMoved || !navFollowUser || !safeCurrent) return;
@@ -403,7 +438,7 @@ export default function LiveMapNative({
           </MapLibreGL.ShapeSource>
         ) : null}
 
-        {trailLinePoints.length >= 2 ? (
+        {trailGeoJson.geometry.coordinates.length >= 2 ? (
           <MapLibreGL.ShapeSource id="trail-source" shape={trailGeoJson as any}>
             <MapLibreGL.LineLayer
               id="trail-line"
@@ -555,3 +590,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+function liveMapNativePropsEqual(a: LiveMapNativeProps, b: LiveMapNativeProps): boolean {
+  return (
+    regionPropsEqual(a.region, b.region) &&
+    a.points === b.points &&
+    llEqual(a.current, b.current) &&
+    llEqual(a.startPoint, b.startPoint) &&
+    llEqual(a.destination, b.destination) &&
+    a.plannedRoutePoints === b.plannedRoutePoints &&
+    llEqual(a.finalPoint, b.finalPoint) &&
+    a.heading === b.heading &&
+    a.followUserLocation === b.followUserLocation &&
+    a.permissionOk === b.permissionOk &&
+    a.interactionMode === b.interactionMode
+  );
+}
+
+const LiveMapNativeMemo = memo(LiveMapNative, liveMapNativePropsEqual);
+LiveMapNativeMemo.displayName = 'LiveMapNative';
+export default LiveMapNativeMemo;

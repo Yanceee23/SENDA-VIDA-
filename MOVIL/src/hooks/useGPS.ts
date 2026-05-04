@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 
-const NORMAL_TRACKING_INTERVAL_MS = 4_000;
-const HIGH_TRACKING_INTERVAL_MS = 1_000;
-const NORMAL_DISTANCE_INTERVAL_M = 4;
-const HIGH_DISTANCE_INTERVAL_M = 1;
+/**
+ * Priorizar estabilidad en producción sobre granularidad extrema.
+ * Menos eventos GPS = menos trabajo de JS/UI mientras se navega.
+ */
+const NORMAL_TRACKING_INTERVAL_MS = 7_000;
+const HIGH_TRACKING_INTERVAL_MS = 2_500;
+const NORMAL_DISTANCE_INTERVAL_M = 8;
+const HIGH_DISTANCE_INTERVAL_M = 3;
 
 export type GPSPrecisionMode = 'normal' | 'high';
 
