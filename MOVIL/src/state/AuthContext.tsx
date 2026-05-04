@@ -5,6 +5,10 @@ import { getJson, remove, setJson } from '../services/storage';
 import { useSettings } from './SettingsContext';
 import { syncFcmTokenToBackend } from '../services/push';
 
+const AUTH_BYPASS_ENABLED = true;
+const AUTH_BYPASS_USER_ID = 20;
+const AUTH_BYPASS_TOKEN = '';
+
 function coerceUserId(raw: unknown): number | undefined {
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
   if (typeof raw === 'string') {
@@ -142,6 +146,22 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function createBypassSession(): AuthUser {
+  return {
+    token: AUTH_BYPASS_TOKEN,
+    userId: AUTH_BYPASS_USER_ID,
+    nombre: 'Invitado',
+    correo: '',
+    puntosEco: 0,
+    foto: null,
+    genero: null,
+    preferencia: null,
+    edad: null,
+    peso: null,
+    altura: null,
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { settings } = useSettings();
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -151,6 +171,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
+      if (AUTH_BYPASS_ENABLED) {
+        const session = createBypassSession();
+        setUser(session);
+        setStatus('signedIn');
+        await setJson(STORAGE_KEYS.auth, session);
+        return;
+      }
       try {
         const stored = await getJson<AuthUser>(STORAGE_KEYS.auth);
         if (stored?.token && stored.userId != null) {
@@ -169,11 +196,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (AUTH_BYPASS_ENABLED) return;
     if (status !== 'signedIn' || !user?.token || !user.userId) return;
     safeSyncPush(settings.apiBaseUrl, user.token, user.userId);
   }, [status, user?.token, user?.userId, settings.apiBaseUrl]);
 
   useEffect(() => {
+    if (AUTH_BYPASS_ENABLED) return;
     if (status !== 'signedIn' || !user?.token || user.userId == null) return;
     const snap = user;
     const sid = profileHydrationKey(settings.apiBaseUrl, snap.userId, snap.token);
@@ -201,6 +230,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [status, settings.apiBaseUrl, user?.token, user?.userId]);
 
   const login = async (input: LoginInput) => {
+    if (AUTH_BYPASS_ENABLED) {
+      const session = { ...createBypassSession(), correo: input.correo.trim() };
+      setUser(session);
+      setStatus('signedIn');
+      await setJson(STORAGE_KEYS.auth, session);
+      return;
+    }
     const trimmedCorreo = input.correo.trim();
     const raw = await apiRequest<any>(settings.apiBaseUrl, '/auth/login', {
       method: 'POST',
@@ -221,6 +257,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const register = async (input: RegisterInput) => {
+    if (AUTH_BYPASS_ENABLED) {
+      const session = {
+        ...createBypassSession(),
+        nombre: input.nombre.trim() || 'Invitado',
+        correo: input.correo.trim(),
+      };
+      setUser(session);
+      setStatus('signedIn');
+      await setJson(STORAGE_KEYS.auth, session);
+      return;
+    }
     const payload: any = {
       nombre: input.nombre.trim(),
       correo: input.correo.trim(),
@@ -252,6 +299,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    if (AUTH_BYPASS_ENABLED) {
+      const session = createBypassSession();
+      setUser(session);
+      setStatus('signedIn');
+      await setJson(STORAGE_KEYS.auth, session);
+      return;
+    }
     setUser(null);
     setStatus('signedOut');
     lastProfileSyncKey.current = null;
@@ -259,12 +313,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const continueAsGuest = () => {
+    if (AUTH_BYPASS_ENABLED) {
+      const session = createBypassSession();
+      setUser(session);
+      setStatus('signedIn');
+      void setJson(STORAGE_KEYS.auth, session);
+      return;
+    }
     lastProfileSyncKey.current = null;
     setUser(null);
     setStatus('guest');
   };
 
   const requireUserId = () => {
+    if (AUTH_BYPASS_ENABLED) return AUTH_BYPASS_USER_ID;
     if (!user?.userId) throw new Error('Debes iniciar sesión para usar esta función.');
     return user.userId;
   };
@@ -279,6 +341,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshUserProfile = async (sessionOverride?: AuthUser) => {
+    if (AUTH_BYPASS_ENABLED) return;
     const snapshot = sessionOverride ?? user;
     if (!snapshot?.userId || !snapshot.token) return;
     const next = await mergePerfilServidor(settings.apiBaseUrl, snapshot);
