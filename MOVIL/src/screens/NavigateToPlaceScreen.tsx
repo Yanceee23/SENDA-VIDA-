@@ -6,7 +6,7 @@ import { Screen } from '../components/Screen';
 import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import { LiveMap } from '../components/LiveMap';
-import { apiRequest, toQuery } from '../services/api';
+import { apiRequest, formatApiErrorMessage, toQuery } from '../services/api';
 import { useSettings } from '../state/SettingsContext';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
@@ -128,7 +128,7 @@ export function NavigateToPlaceScreen() {
       }));
       setResults(mapped);
     } catch (error: unknown) {
-      Alert.alert('Buscar', error instanceof Error ? error.message : 'No se pudo buscar el destino.');
+      Alert.alert('Buscar', formatApiErrorMessage(error));
     } finally {
       setSearching(false);
     }
@@ -161,7 +161,7 @@ export function NavigateToPlaceScreen() {
         durationS: res.duration_s != null ? Number(res.duration_s) : undefined,
       });
     } catch (error: unknown) {
-      Alert.alert('Ruta', error instanceof Error ? error.message : 'No se pudo calcular la ruta.');
+      Alert.alert('Ruta', formatApiErrorMessage(error));
     } finally {
       setRouting(false);
     }

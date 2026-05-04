@@ -28,7 +28,7 @@ function loginErrorAlert(e: unknown): void {
       'El correo o la contraseña no coinciden. Comprueba mayúsculas, espacios al inicio o al final del correo, y que estés usando el mismo correo con el que te registraste.';
   } else if (Number(status) === 404) {
     title = 'No se encontró el servidor';
-    message = `${base}\n\nComprueba en Ajustes → Conexión que la URL termine en /api (ej. http://IP:8084/api).`;
+    message = `${base}\n\nComprueba en Ajustes → Conexión que la URL termine en /api (ej. https://senda-vida.onrender.com/api).`;
   }
 
   Alert.alert(title, message);
@@ -81,7 +81,7 @@ export function LoginScreen({ navigation }: Props) {
       } catch {
         Alert.alert(
           'Sin conexión al servidor',
-          'No pudimos alcanzar el servidor. Revisa tu Wi‑Fi o datos, confirma la URL en Ajustes → Conexión (debe incluir /api) y que el backend esté en marcha.'
+          'No pudimos alcanzar la API. Revisa tu conexión a internet, confirma en Ajustes → Conexión que uses https://senda-vida.onrender.com/api y vuelve a intentar.'
         );
         return;
       }
