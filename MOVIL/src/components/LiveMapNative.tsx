@@ -103,7 +103,7 @@ export default function LiveMapNative({
   );
 
   const trailLinePoints = useMemo(() => {
-    const base = safePoints.length > 260 ? safePoints.slice(-260) : safePoints;
+    const base = safePoints;
     if (!safeCurrent || base.length === 0) return base;
     const last = base[base.length - 1];
     const near =
@@ -256,6 +256,14 @@ export default function LiveMapNative({
 
         <MapLibreGL.UserLocation visible={permissionOk} />
 
+        {safeCurrent ? (
+          <MapLibreGL.PointAnnotation id="current-position-marker" coordinate={[safeCurrent.lng, safeCurrent.lat]}>
+            <View style={styles.currentPulse}>
+              <View style={styles.currentDot} />
+            </View>
+          </MapLibreGL.PointAnnotation>
+        ) : null}
+
         {safePlannedRoutePoints.length >= 2 ? (
           <MapLibreGL.ShapeSource id="planned-route-source" shape={plannedGeoJson as any}>
             <MapLibreGL.LineLayer
@@ -356,6 +364,22 @@ const styles = StyleSheet.create({
     backgroundColor: colors.danger,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.7)',
+  },
+  currentPulse: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(37,99,235,0.22)',
+  },
+  currentDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: '#2563EB',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   finalDot: {
     width: 14,

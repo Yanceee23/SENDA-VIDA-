@@ -6,8 +6,7 @@ import { TextField } from '../components/TextField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
 import { useAuth } from '../state/AuthContext';
-import { useSettings } from '../state/SettingsContext';
-import { apiRequest, formatApiErrorMessage, userFacingHttpHint, type ApiError } from '../services/api';
+import { formatApiErrorMessage, userFacingHttpHint, type ApiError } from '../services/api';
 import type { AuthStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
@@ -36,7 +35,6 @@ function loginErrorAlert(e: unknown): void {
 
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
-  const { settings } = useSettings();
   const [loading, setLoading] = useState(false);
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
@@ -73,18 +71,6 @@ export function LoginScreen({ navigation }: Props) {
     if (!validate()) return;
     try {
       setLoading(true);
-      try {
-        await apiRequest<{ ok: boolean }>(settings.apiBaseUrl, '/health', {
-          method: 'GET',
-          timeoutMs: 15000,
-        });
-      } catch {
-        Alert.alert(
-          'Sin conexión al servidor',
-          'No pudimos alcanzar la API. Revisa tu conexión a internet, confirma en Ajustes → Conexión que uses https://senda-vida.onrender.com/api y vuelve a intentar.'
-        );
-        return;
-      }
       await login({ correo: correo.trim(), password });
     } catch (e: unknown) {
       loginErrorAlert(e);

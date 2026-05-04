@@ -4,13 +4,6 @@ export type ApiError = {
   details?: unknown;
 };
 
-export type UnauthorizedContext = {
-  status: number;
-  baseUrl: string;
-  url: string;
-  hasAuthToken: boolean;
-};
-
 /** Mensaje legible para Alertas/UI a partir del error lanzado por apiRequest() u otros Error. */
 export function formatApiErrorMessage(e: unknown): string {
   if (e != null && typeof e === 'object' && 'message' in e && typeof (e as ApiError).message === 'string') {
@@ -31,25 +24,10 @@ export function userFacingHttpHint(status: number): string | null {
   return null;
 }
 
-let onUnauthorized: ((context: UnauthorizedContext) => void | Promise<void>) | null = null;
 let authToken: string | null = null;
-let lastUnauthorizedAt = 0;
-const UNAUTHORIZED_DEBOUNCE_MS = 1500;
-
-export function setOnUnauthorizedCallback(cb: ((context: UnauthorizedContext) => void | Promise<void>) | null) {
-  onUnauthorized = cb;
-}
 
 export function setApiAuthToken(token: string | null) {
   authToken = token && token.trim() ? token.trim() : null;
-}
-
-function notifyUnauthorized(context: UnauthorizedContext) {
-  if (!onUnauthorized) return;
-  const now = Date.now();
-  if (now - lastUnauthorizedAt < UNAUTHORIZED_DEBOUNCE_MS) return;
-  lastUnauthorizedAt = now;
-  void onUnauthorized(context);
 }
 
 async function parseJsonSafe(res: Response): Promise<any> {
@@ -131,14 +109,6 @@ export async function apiRequest<T>(
 
   const data = await parseJsonSafe(res);
   if (!res.ok) {
-    if (res.status === 401) {
-      notifyUnauthorized({
-        status: res.status,
-        baseUrl: trimmed,
-        url,
-        hasAuthToken: !!requestToken,
-      });
-    }
     const msg =
       (data && typeof data === 'object' && ('error' in data ? (data as any).error : (data as any).message)) ||
       `Error HTTP ${res.status}`;

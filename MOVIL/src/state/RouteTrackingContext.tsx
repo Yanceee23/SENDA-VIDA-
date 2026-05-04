@@ -52,11 +52,10 @@ const REROUTE_THROTTLE_MS = 25_000;
 const REROUTE_PROGRESS_WINDOW_MS = 28_000;
 const OFF_ROUTE_THRESHOLD_KM = 0.05;
 const MIN_PROGRESS_KM = 0.01;
-const MAX_TRAIL_POINTS = 600;
 const MAX_ROUTE_START_DISTANCE_KM = 0.35;
 const MIN_DISTANCE_DELTA_KM = 0.0015;
 const MAX_DISTANCE_DELTA_KM = 0.25;
-const MIN_TRAIL_POINT_DELTA_KM = 0.007;
+const MIN_TRAIL_POINT_DELTA_KM = 0.002;
 /** Lecturas con peor precisión no suman km pero no bloquean tanto el avance en senderismo */
 const GPS_MAX_ACCURACY_M = 115;
 
@@ -115,6 +114,21 @@ function projectUserOntoPolyline(
     }
   }
   return best;
+}
+
+function trimRouteToRemaining(
+  userPos: { lat: number; lng: number },
+  route: Array<{ lat: number; lng: number }>
+): Array<{ lat: number; lng: number }> {
+  if (route.length < 2) return route;
+  const proj = projectUserOntoPolyline(userPos, route);
+  if (!proj || proj.distKm > OFF_ROUTE_THRESHOLD_KM * 2) return route;
+  const tail = route.slice(proj.segIdx + 1);
+  const cut = { lat: proj.lat, lng: proj.lng };
+  if (!tail.length) return route;
+  const gapToNextKm = haversine(cut.lat, cut.lng, tail[0].lat, tail[0].lng);
+  const remaining = gapToNextKm < 0.0015 ? tail : [cut, ...tail];
+  return remaining.length >= 2 ? remaining : route;
 }
 
 type RouteTrackingCtx = {
@@ -189,7 +203,7 @@ function navigateToRouteFinished(payload: {
 
 export function RouteTrackingProvider({ children }: { children: React.ReactNode }) {
   const { settings } = useSettings();
-  const { status, user, requireUserId } = useAuth();
+  const { status, user } = useAuth();
   const { setRouteActive, setActiveRouteProgress, resetActiveRouteProgress, schedulePostRouteIfEnabled, notifyExtremeWeather } =
     useHydrationReminders();
   const gps = useGPS();
@@ -223,8 +237,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
   const finishConfirmationRef = useRef(false);
 
   const mode = tipo === 'ciclismo' ? 'bike' : 'foot';
-  const hasAuthToken = typeof user?.token === 'string' && user.token.trim().length > 0;
-  const saveToDb = status === 'signedIn' && hasAuthToken && meta.saveToDb !== false;
+  const saveToDb = status === 'signedIn' && user?.userId != null && meta.saveToDb !== false;
 
   const calorias = useMemo(() => {
     const pesoKg = user?.peso != null && user.peso > 0 ? Number(user.peso) : 70;
@@ -304,7 +317,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
           endLat: dest.lat,
           endLng: dest.lng,
         });
-        setPlannedRoutePoints(routeData.geometry);
+        setPlannedRoutePoints(trimRouteToRemaining(from, routeData.geometry));
         setPlannedDurationMin(routeData.durationMin);
       } catch {
         // silencioso
@@ -347,15 +360,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
 
   const trimPlannedRoute = useCallback((userPos: { lat: number; lng: number }) => {
     setPlannedRoutePoints((prev) => {
-      if (prev.length < 2) return prev;
-      const proj = projectUserOntoPolyline(userPos, prev);
-      if (!proj || proj.distKm > OFF_ROUTE_THRESHOLD_KM * 2) return prev;
-      const tail = prev.slice(proj.segIdx + 1);
-      const cut = { lat: proj.lat, lng: proj.lng };
-      if (!tail.length) return prev;
-      const gapToNextKm = haversine(cut.lat, cut.lng, tail[0].lat, tail[0].lng);
-      const merged = gapToNextKm < 0.0015 ? tail : [cut, ...tail];
-      return merged.length >= 2 ? merged : prev;
+      return trimRouteToRemaining(userPos, prev);
     });
   }, []);
 
@@ -384,8 +389,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
         const last = prev[prev.length - 1];
         const delta = haversine(last.lat, last.lng, next.lat, next.lng);
         if (delta >= MIN_TRAIL_POINT_DELTA_KM) {
-          const appended = [...prev, next];
-          return appended.length > MAX_TRAIL_POINTS ? appended.slice(-MAX_TRAIL_POINTS) : appended;
+          return [...prev, next];
         }
         return prev;
       });
@@ -466,7 +470,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
               endLat: destinationCoords.lat,
               endLng: destinationCoords.lng,
             });
-            setPlannedRoutePoints(routeData.geometry);
+            setPlannedRoutePoints(trimRouteToRemaining(start, routeData.geometry));
             setPlannedDurationMin(routeData.durationMin);
           } catch (e: unknown) {
             setPlannedRoutePoints([]);
@@ -475,15 +479,10 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
           }
         }
 
-        const effectiveSaveToDb = status === 'signedIn' && hasAuthToken && params.saveToDb !== false;
-        if (status === 'signedIn' && params.saveToDb !== false && !hasAuthToken) {
-          Alert.alert('Acceso requerido', 'Tu sesion no es valida. Inicia sesion nuevamente para comenzar la ruta.');
-          cancelSession();
-          return false;
-        }
+        const effectiveSaveToDb = status === 'signedIn' && user?.userId != null && params.saveToDb !== false;
 
         if (effectiveSaveToDb && baseUrl) {
-          const usuarioId = requireUserId();
+          const usuarioId = Number(user.userId);
           const act = await apiRequest<ActivityStartResponse>(
             baseUrl,
             `/actividades/iniciar?usuarioId=${usuarioId}&rutaId=${params.rutaId ?? ''}&tipo=${params.tipo}`,
@@ -510,15 +509,14 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
     [
       cancelSession,
       gps,
-      hasAuthToken,
       notifyExtremeWeather,
       onGpsUpdate,
-      requireUserId,
       setActiveRouteProgress,
       setRouteActive,
       settings.apiBaseUrl,
       status,
       user?.token,
+      user?.userId,
     ]
   );
 
