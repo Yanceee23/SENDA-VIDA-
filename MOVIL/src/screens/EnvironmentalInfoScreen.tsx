@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, InteractionManager, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Screen } from '../components/Screen';
 import { TextField } from '../components/TextField';
@@ -206,7 +206,10 @@ export function EnvironmentalInfoScreen({ navigation, route }: Props) {
     if (loading) return;
     if (data) return;
 
-    void onFetch();
+    const task = InteractionManager.runAfterInteractions(() => {
+      void onFetch();
+    });
+    return () => task.cancel();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFetch, gpsResolved, coords.lat, coords.lng]);
 

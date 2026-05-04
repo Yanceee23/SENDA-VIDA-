@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, InteractionManager, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { DrawerActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -49,6 +49,39 @@ type EcoPlace = {
   descripcion?: string;
 };
 
+function placeStableKey(p: EcoPlace): string {
+  return p.id ?? `${p.osm_type ?? 'p'}:${String(p.osm_id ?? `${p.lat},${p.lng}`)}`;
+}
+
+function waitForUiIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    InteractionManager.runAfterInteractions(() => resolve());
+  });
+}
+
+async function mapPlacesInChunks(source: OverpassPlace[], category: PlaceCategory): Promise<EcoPlace[]> {
+  const mapped: EcoPlace[] = [];
+  const chunkSize = 150;
+  for (let i = 0; i < source.length; i += chunkSize) {
+    const chunk = source.slice(i, i + chunkSize);
+    for (const x of chunk) {
+      const parts = x.id.split(':');
+      mapped.push({
+        id: x.id,
+        osm_type: parts[0],
+        osm_id: parts[1],
+        nombre: x.nombre,
+        tipo: category,
+        lat: x.lat,
+        lng: x.lng,
+        descripcion: x.descripcion,
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  return mapped;
+}
+
 function uiTipoToPlaceCategory(raw: string): PlaceCategory | null {
   const k = String(raw ?? '').toLowerCase().trim();
   const map: Record<string, PlaceCategory> = {
@@ -91,8 +124,6 @@ export function SafeRoutesScreen() {
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesLoadingMore, setPlacesLoadingMore] = useState(false);
   const [places, setPlaces] = useState<EcoPlace[]>([]);
-  const [placesTotal, setPlacesTotal] = useState(0);
-  const [placesPage, setPlacesPage] = useState(0);
   const [placesError, setPlacesError] = useState<string | null>(null);
   const [etaMinByPlace, setEtaMinByPlace] = useState<Record<string, number>>({});
   const [myPos, setMyPos] = useState<LatLng | null>(null);
@@ -101,6 +132,19 @@ export function SafeRoutesScreen() {
 
   const isEcoTipo = (t: string) => ['rios', 'lagos', 'playas', 'volcanes', 'montanas', 'parques', 'cascadas'].includes(String(t ?? '').toLowerCase().trim());
   const showPlacesView = mode === 'lugares' || (mode === 'rutas' && isEcoTipo(tipo));
+  const trimmedPlaceQuery = placeQuery.trim().toLowerCase();
+  const filteredPlaces = useMemo(() => {
+    if (!trimmedPlaceQuery) return places;
+    return places.filter((p) => p.nombre.toLowerCase().includes(trimmedPlaceQuery));
+  }, [places, trimmedPlaceQuery]);
+  const placesTotal = filteredPlaces.length;
+  const placeDistanceLabelById = useMemo(() => {
+    if (!myPos) return {};
+    return filteredPlaces.reduce<Record<string, string>>((acc, p) => {
+      acc[placeStableKey(p)] = `${distanciaKm(myPos, { lat: p.lat, lng: p.lng }).toFixed(2)} km`;
+      return acc;
+    }, {});
+  }, [filteredPlaces, myPos]);
 
   useEffect(() => {
     (async () => {
@@ -195,22 +239,9 @@ export function SafeRoutesScreen() {
         res = await getPlacesByCategory(category);
       }
       if (reqId !== placesReqSeq.current) return;
-      const filtered = res.filter((p) => p.nombre.toLowerCase().includes(placeQuery.trim().toLowerCase()));
-      const mapped: EcoPlace[] = filtered.map((x: OverpassPlace) => {
-        const parts = x.id.split(':');
-        return {
-          id: x.id,
-          osm_type: parts[0],
-          osm_id: parts[1],
-          nombre: x.nombre,
-          tipo: category,
-          lat: x.lat,
-          lng: x.lng,
-          descripcion: x.descripcion,
-        };
-      });
-      setPlacesTotal(mapped.length);
-      setPlacesPage(0);
+      await waitForUiIdle();
+      const mapped = await mapPlacesInChunks(res, category);
+      if (reqId !== placesReqSeq.current) return;
       setPlaces(mapped);
     } catch (e: any) {
       if (reqId !== placesReqSeq.current) return;
@@ -239,7 +270,7 @@ export function SafeRoutesScreen() {
 
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, tipo, placeQuery, settings.apiBaseUrl, user?.token]);
+  }, [mode, tipo, settings.apiBaseUrl, user?.token]);
 
   useEffect(() => {
     if (!showPlacesView) return;
@@ -460,18 +491,17 @@ export function SafeRoutesScreen() {
         </View>
 
         <FlatList
-          data={places}
-          keyExtractor={(p) => p.id ?? `${p.osm_type ?? 'p'}:${String(p.osm_id ?? '')}`}
+          data={filteredPlaces}
+          keyExtractor={placeStableKey}
           contentContainerStyle={{ paddingHorizontal: 18, paddingBottom: 18, gap: 12 }}
           onEndReached={() => {
             if (placesLoading || placesLoadingMore) return;
-            if (places.length >= placesTotal) return;
-            void fetchPlaces({ reset: false, tipo: effectiveTipo });
+            return;
           }}
           onEndReachedThreshold={0.6}
           renderItem={({ item }) => {
-            const dist =
-              myPos ? `${distanciaKm(myPos, { lat: item.lat, lng: item.lng }).toFixed(2)} km` : '— km';
+            const placeKey = placeStableKey(item);
+            const dist = placeDistanceLabelById[placeKey] ?? '— km';
             return (
               <Card style={styles.placeCard}>
                 <Text style={styles.routeName}>{item.nombre}</Text>
@@ -480,8 +510,7 @@ export function SafeRoutesScreen() {
                 </Text>
                 <Text style={styles.note}>{item.descripcion ?? 'Lugar natural en El Salvador.'}</Text>
                 {(() => {
-                  const key = item.id ?? `${item.osm_type ?? 'p'}:${String(item.osm_id ?? `${item.lat},${item.lng}`)}`;
-                  const eta = etaMinByPlace[key];
+                  const eta = etaMinByPlace[placeKey];
                   if (eta == null) return null;
                   return <Text style={styles.metaText}>⏱ {Math.max(1, Math.round(eta))} min estimados</Text>;
                 })()}
