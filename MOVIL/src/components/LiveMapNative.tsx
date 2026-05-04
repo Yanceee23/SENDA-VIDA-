@@ -102,16 +102,26 @@ export default function LiveMapNative({
     [safePlannedRoutePoints]
   );
 
+  const trailLinePoints = useMemo(() => {
+    const base = safePoints.length > 260 ? safePoints.slice(-260) : safePoints;
+    if (!safeCurrent || base.length === 0) return base;
+    const last = base[base.length - 1];
+    const near =
+      Math.abs(last.lat - safeCurrent.lat) < 1e-7 && Math.abs(last.lng - safeCurrent.lng) < 1e-7;
+    if (near) return base;
+    return [...base, safeCurrent];
+  }, [safePoints, safeCurrent]);
+
   const trailGeoJson = useMemo(
     () => ({
       type: 'Feature' as const,
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: (safePoints.length > 260 ? safePoints.slice(-260) : safePoints).map((p) => [p.lng, p.lat]),
+        coordinates: trailLinePoints.map((p) => [p.lng, p.lat]),
       },
     }),
-    [safePoints]
+    [trailLinePoints]
   );
 
   const routeSig = useMemo(() => {
@@ -258,7 +268,7 @@ export default function LiveMapNative({
           </MapLibreGL.ShapeSource>
         ) : null}
 
-        {safePoints.length >= 2 ? (
+        {trailLinePoints.length >= 2 ? (
           <MapLibreGL.ShapeSource id="trail-source" shape={trailGeoJson as any}>
             <MapLibreGL.LineLayer
               id="trail-line"

@@ -11,12 +11,10 @@ export function RequireAccountModal({
   visible,
   onClose,
   onCreateAccount,
-  onContinueNoSave,
 }: {
   visible: boolean;
   onClose: () => void;
   onCreateAccount: () => void;
-  onContinueNoSave: () => void;
 }) {
   const { settings } = useSettings();
   return (
@@ -27,15 +25,14 @@ export function RequireAccountModal({
       <View style={styles.center}>
         <Card style={styles.modalCard}>
           <Text style={[styles.title, { fontSize: scaleFont(16, settings.fontScale) }]}>
-            Para guardar tu actividad necesitas una cuenta
+            Necesitas iniciar sesion para continuar
           </Text>
           <Text style={[styles.sub, { fontSize: scaleFont(14, settings.fontScale), lineHeight: scaleFont(20, settings.fontScale) }]}>
-            Puedes continuar sin guardar, o crear una cuenta para llevar tu historial.
+            Inicia sesion o crea una cuenta para usar esta funcion.
           </Text>
 
           <View style={{ gap: 10 }}>
-            <LargeButton title="Crear cuenta" onPress={onCreateAccount} variant="primary" />
-            <LargeButton title="Continuar sin guardar" onPress={onContinueNoSave} variant="outlinePrimary" />
+            <LargeButton title="Crear cuenta / Iniciar sesion" onPress={onCreateAccount} variant="primary" />
           </View>
 
           <Pressable onPress={onClose} style={styles.closeLink} accessibilityRole="button">

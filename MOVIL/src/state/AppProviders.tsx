@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './AuthContext';
 import { SettingsProvider, useSettings } from './SettingsContext';
 import { HydrationRemindersProvider } from './HydrationRemindersContext';
+import { RouteTrackingProvider } from './RouteTrackingContext';
 import { setApiAuthToken, setOnUnauthorizedCallback, type UnauthorizedContext } from '../services/api';
 
 function normalizeApiIdentity(raw: string): string {
@@ -55,7 +56,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <SettingsProvider>
       <AuthProvider>
         <ApiAuthSync />
-        <HydrationRemindersProvider>{children}</HydrationRemindersProvider>
+        <HydrationRemindersProvider>
+          <RouteTrackingProvider>{children}</RouteTrackingProvider>
+        </HydrationRemindersProvider>
       </AuthProvider>
     </SettingsProvider>
   );

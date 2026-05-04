@@ -7,6 +7,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { colors } from '../theme/colors';
 import { useAuth } from '../state/AuthContext';
 import type { AuthStackParamList } from '../types/navigation';
+import { formatHeightMetersInput, heightMetersError, parseHeightMetersToCm } from '../utils/height';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
@@ -34,26 +35,29 @@ export function RegisterScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [genero, setGenero] = useState<(typeof generos)[number]['id']>('otro');
   const [preferencia, setPreferencia] = useState<(typeof prefs)[number]['id']>('ambos');
+  const alturaError = useMemo(() => heightMetersError(altura), [altura]);
 
   const errors = useMemo(() => {
     const e: string[] = [];
     if (!nombre.trim()) e.push('Ingresa tu nombre.');
     if (!correo.trim() || !correo.includes('@')) e.push('Ingresa un correo válido.');
     if (!password || password.length < 4) e.push('La contraseña debe tener al menos 4 caracteres.');
+    if (alturaError) e.push(alturaError);
     return e;
-  }, [nombre, correo, password]);
+  }, [nombre, correo, password, alturaError]);
 
   const onSubmit = async () => {
     if (errors.length) return Alert.alert('Revisa tus datos', errors.join('\n'));
     try {
       setLoading(true);
+      const alturaCm = parseHeightMetersToCm(altura);
       await register({
         nombre,
         correo,
         password,
         edad: edad ? Number(edad) : undefined,
         peso: peso ? Number(peso) : undefined,
-        altura: altura ? Number(altura) : undefined,
+        altura: alturaCm ?? undefined,
         genero,
         preferencia,
       });
@@ -72,7 +76,15 @@ export function RegisterScreen({ navigation }: Props) {
       <TextField label="Nombre *" value={nombre} onChangeText={setNombre} placeholder="Tu nombre" autoCapitalize="words" />
       <TextField label="Edad" value={edad} onChangeText={setEdad} placeholder="Ej: 25" keyboardType="numeric" />
       <TextField label="Peso (kg)" value={peso} onChangeText={setPeso} placeholder="Ej: 70" keyboardType="numeric" />
-      <TextField label="Altura (cm)" value={altura} onChangeText={setAltura} placeholder="Ej: 170" keyboardType="numeric" />
+      <TextField
+        label="Altura (m)"
+        value={altura}
+        onChangeText={(v) => setAltura(formatHeightMetersInput(v))}
+        placeholder="Ej: 1.70"
+        keyboardType="numeric"
+        hint="Formato automatico X.XX (ej. 150 -> 1.50)"
+        error={alturaError}
+      />
       <TextField label="Correo electrónico *" value={correo} onChangeText={setCorreo} placeholder="tu@correo.com" keyboardType="email-address" />
       <TextField label="Contraseña *" value={password} onChangeText={setPassword} placeholder="••••" secureTextEntry />
 

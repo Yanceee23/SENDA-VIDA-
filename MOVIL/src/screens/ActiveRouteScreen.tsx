@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Contacts from 'expo-contacts';
 import * as Linking from 'expo-linking';
@@ -7,22 +7,15 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import { LiveMap } from '../components/LiveMap';
-import { useGPS, type GPSPoint } from '../hooks/useGPS';
-import { getOsrmRoute } from '../services/osrmService';
-import { addTodayStats, getMonthStats, syncStatsToBackend } from '../services/statsService';
+import { getMonthStats } from '../services/statsService';
 import { detectExtremeWeather } from '../services/weatherAlertsService';
-import { apiRequest, toQuery } from '../services/api';
 import { requestRouteAdvice } from '../services/geminiService';
-import { useAuth } from '../state/AuthContext';
-import { useHydrationReminders } from '../state/HydrationRemindersContext';
 import { useSettings } from '../state/SettingsContext';
+import { useRouteTracking, type RouteSessionParams } from '../state/RouteTrackingContext';
 import { colors } from '../theme/colors';
 import { fontFamily } from '../theme/typography';
 import type { AppStackParamList } from '../types/navigation';
 import { formatHMS, formatKm } from '../utils/format';
-import { haversine } from '../utils/geo';
-import { calcularCalorias } from '../utils/gps';
-import { normalizeLatLng } from '../utils/coordinates';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ActiveRoute'>;
 
@@ -31,50 +24,6 @@ type ContactOption = {
   nombre: string;
   numero: string;
 };
-
-type ActivityStartResponse = { id: number };
-type ExplorerEnvResponse = {
-  especies?: {
-    flora?: Array<{ nombre?: string }>;
-    floraTotal?: number;
-    fauna?: Array<{ nombre?: string }>;
-    faunaTotal?: number;
-  };
-};
-
-const REROUTE_THROTTLE_MS = 25_000;
-const REROUTE_PROGRESS_WINDOW_MS = 28_000;
-const OFF_ROUTE_THRESHOLD_KM = 0.05;
-const MIN_PROGRESS_KM = 0.01;
-const MAX_TRAIL_POINTS = 600;
-const MAX_ROUTE_START_DISTANCE_KM = 0.35;
-const MIN_DISTANCE_DELTA_KM = 0.002;
-const MAX_DISTANCE_DELTA_KM = 0.25;
-const MIN_TRAIL_POINT_DELTA_KM = 0.01;
-
-function pointToSegmentDistanceKm(
-  p: { lat: number; lng: number },
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number }
-): number {
-  const dx = b.lng - a.lng;
-  const dy = b.lat - a.lat;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return haversine(p.lat, p.lng, a.lat, a.lng);
-  const t = Math.max(0, Math.min(1, ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / lenSq));
-  return haversine(p.lat, p.lng, a.lat + t * dy, a.lng + t * dx);
-}
-
-function minDistanceToRouteKm(point: { lat: number; lng: number }, routePoints: Array<{ lat: number; lng: number }>): number {
-  if (routePoints.length === 0) return Number.POSITIVE_INFINITY;
-  if (routePoints.length === 1) return haversine(point.lat, point.lng, routePoints[0].lat, routePoints[0].lng);
-  let min = Number.POSITIVE_INFINITY;
-  for (let i = 0; i < routePoints.length - 1; i++) {
-    const d = pointToSegmentDistanceKm(point, routePoints[i], routePoints[i + 1]);
-    if (d < min) min = d;
-  }
-  return min;
-}
 
 const EMERGENCIAS = [
   { nombre: '🚔 Policía Nacional Civil', numero: '911' },
@@ -93,98 +42,84 @@ function normalizarNumero(raw: string): string {
   return raw.replace(/[\s\-\(\)\+]/g, '');
 }
 
+function activeRouteParamsToSession(params: AppStackParamList['ActiveRoute']): RouteSessionParams {
+  type AR = NonNullable<AppStackParamList['ActiveRoute']>;
+  const p = (params ?? {}) as Partial<AR>;
+  return {
+    tipo: p.tipo === 'ciclismo' || p.tipo === 'senderismo' ? p.tipo : 'senderismo',
+    origin: 'fullScreen',
+    rutaId: p.rutaId,
+    rutaNombre: p.rutaNombre,
+    saveToDb: p.saveToDb,
+    destLat: p.destLat,
+    destLng: p.destLng,
+    destNombre: p.destNombre,
+    routeStartLat: p.routeStartLat,
+    routeStartLng: p.routeStartLng,
+    nivelSeguridad: p.nivelSeguridad,
+  };
+}
+
 export function ActiveRouteScreen({ navigation, route }: Props) {
   const { settings } = useSettings();
-  const { status, user, requireUserId } = useAuth();
-  const { setRouteActive, setActiveRouteProgress, resetActiveRouteProgress, schedulePostRouteIfEnabled, notifyExtremeWeather } =
-    useHydrationReminders();
-  const gps = useGPS();
+  const tracking = useRouteTracking();
 
-  const tipo = route.params?.tipo ?? 'senderismo';
-  const mode = tipo === 'ciclismo' ? 'bike' : 'foot';
-  const saveToDb = status === 'signedIn' && route.params?.saveToDb !== false;
-  const destination = useMemo(
-    () => normalizeLatLng({ lat: route.params?.destLat, lng: route.params?.destLng }),
-    [route.params?.destLat, route.params?.destLng]
-  );
-  const routeStart = useMemo(
-    () => normalizeLatLng({ lat: route.params?.routeStartLat, lng: route.params?.routeStartLng }),
-    [route.params?.routeStartLat, route.params?.routeStartLng]
-  );
-
-  const [current, setCurrent] = useState<{ lat: number; lng: number } | null>(null);
-  const [startPoint, setStartPoint] = useState<{ lat: number; lng: number } | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
-  const [points, setPoints] = useState<Array<{ lat: number; lng: number }>>([]);
-  const [plannedRoutePoints, setPlannedRoutePoints] = useState<Array<{ lat: number; lng: number }>>([]);
-  const [plannedDurationMin, setPlannedDurationMin] = useState<number | null>(null);
-  const [distKm, setDistKm] = useState(0);
-  const [elapsedSec, setElapsedSec] = useState(0);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [activityId, setActivityId] = useState<number | null>(null);
-  const [finishPoint, setFinishPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [contactsVisible, setContactsVisible] = useState(false);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsQuery, setContactsQuery] = useState('');
   const [safetyLoading, setSafetyLoading] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [routeAdvice, setRouteAdvice] = useState('');
   const [routeAdviceLoading, setRouteAdviceLoading] = useState(false);
   const [robotModalVisible, setRobotModalVisible] = useState(false);
-  const [lastKnownClimate, setLastKnownClimate] = useState<{ condicion: string; temperaturaC: number | null }>({
-    condicion: 'Sin datos',
-    temperaturaC: null,
-  });
-  const reroutingRef = useRef(false);
-  const lastRerouteAtRef = useRef(0);
-  const progressRef = useRef<{ at: number; distToDestKm: number } | null>(null);
-  const lastDistancePointRef = useRef<{ lat: number; lng: number } | null>(null);
-  const maybeRecalculateRouteRef = useRef<(point: { lat: number; lng: number }) => void>(() => {});
 
-  const calorias = useMemo(() => {
-    const pesoKg = user?.peso != null && user.peso > 0 ? Number(user.peso) : 70;
-    return Math.round(calcularCalorias(distKm, pesoKg, tipo));
-  }, [distKm, tipo, user?.peso]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const ok = await tracking.beginSession(activeRouteParamsToSession(route.params));
+      if (!cancelled && !ok) navigation.goBack();
+    })();
+    return () => {
+      cancelled = true;
+      tracking.cancelSession();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const region = useMemo(() => {
-    if (!current) return undefined;
+    if (!tracking.current) return undefined;
     return {
-      latitude: current.lat,
-      longitude: current.lng,
+      latitude: tracking.current.lat,
+      longitude: tracking.current.lng,
       latitudeDelta: 0.12,
       longitudeDelta: 0.12,
     };
-  }, [current]);
-
-  const updateTimer = (startTs: number) => {
-    const now = Date.now();
-    setElapsedSec(Math.max(0, Math.floor((now - startTs) / 1000)));
-  };
+  }, [tracking.current]);
 
   const fetchRouteAdvice = async () => {
     try {
       setRouteAdviceLoading(true);
-      const climaCondicion = String(lastKnownClimate.condicion ?? 'Sin datos');
-      const temperatura = lastKnownClimate.temperaturaC;
+      const baseUrl = (settings.apiBaseUrl ?? '').trim();
+      const weather = baseUrl ? await detectExtremeWeather(baseUrl) : { clima: null };
+      const climaCondicion = weather.clima?.condicion ?? 'Sin datos';
+      const temperatura = weather.clima ? Number(weather.clima.temperaturaC) : null;
       const mesStats = await getMonthStats().catch(() => ({ km: 0, calorias: 0, tiempoSegundos: 0, rutas: 0 }));
       const recommendation = await requestRouteAdvice({
-        kmHoy: distKm,
-        caloriasHoy: calorias,
+        kmHoy: tracking.distKm,
+        caloriasHoy: tracking.calorias,
         rutasMes: mesStats.rutas,
         kmMes: mesStats.km,
         clima: climaCondicion,
         temperatura,
         hora: new Date().getHours(),
-        actividad: tipo === 'ciclismo' ? 'bici' : 'caminata',
+        actividad: tracking.tipo === 'ciclismo' ? 'bici' : 'caminata',
         destino: route.params?.destNombre,
-        tiempoSegundos: elapsedSec,
+        tiempoSegundos: tracking.elapsedSec,
       });
       setRouteAdvice(recommendation);
-    } catch (e: any) {
-      setRouteAdvice(e?.message ?? 'Servicio temporalmente no disponible, intenta más tarde.');
+    } catch (e: unknown) {
+      setRouteAdvice(e instanceof Error ? e.message : 'Servicio temporalmente no disponible, intenta más tarde.');
     } finally {
       setRouteAdviceLoading(false);
     }
@@ -193,115 +128,6 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
   const onRobotPress = () => {
     setRobotModalVisible(true);
   };
-
-  const recalculateRoute = useCallback(
-    async (from: { lat: number; lng: number }) => {
-      if (!destination || reroutingRef.current) return;
-      const now = Date.now();
-      if (now - lastRerouteAtRef.current < REROUTE_THROTTLE_MS) return;
-      reroutingRef.current = true;
-      lastRerouteAtRef.current = now;
-      try {
-        const routeData = await getOsrmRoute({
-          mode,
-          startLat: from.lat,
-          startLng: from.lng,
-          endLat: destination.lat,
-          endLng: destination.lng,
-        });
-        setPlannedRoutePoints(routeData.geometry);
-        setPlannedDurationMin(routeData.durationMin);
-      } catch {
-        // Reintento silencioso: no interrumpir navegación por fallo temporal.
-      } finally {
-        reroutingRef.current = false;
-      }
-    },
-    [destination, mode]
-  );
-
-  const maybeRecalculateRoute = useCallback(
-    (next: { lat: number; lng: number }) => {
-      if (!destination || paused) return;
-      const now = Date.now();
-      const distToDest = haversine(next.lat, next.lng, destination.lat, destination.lng);
-      const distToPath = minDistanceToRouteKm(next, plannedRoutePoints);
-      const offRoute = Number.isFinite(distToPath) && distToPath > OFF_ROUTE_THRESHOLD_KM;
-
-      const prevProgress = progressRef.current;
-      const staleProgress =
-        !!prevProgress &&
-        now - prevProgress.at >= REROUTE_PROGRESS_WINDOW_MS &&
-        distToDest > prevProgress.distToDestKm - MIN_PROGRESS_KM;
-
-      if (!prevProgress || now - prevProgress.at >= REROUTE_PROGRESS_WINDOW_MS) {
-        progressRef.current = { at: now, distToDestKm: distToDest };
-      }
-
-      if (offRoute || staleProgress) {
-        void recalculateRoute(next);
-      }
-    },
-    [destination, paused, plannedRoutePoints, recalculateRoute]
-  );
-
-  useEffect(() => {
-    maybeRecalculateRouteRef.current = maybeRecalculateRoute;
-  }, [maybeRecalculateRoute]);
-
-  const trimPlannedRoute = useCallback((userPos: { lat: number; lng: number }) => {
-    setPlannedRoutePoints((prev) => {
-      if (prev.length < 2) return prev;
-      let bestIdx = 0;
-      let bestDist = haversine(userPos.lat, userPos.lng, prev[0].lat, prev[0].lng);
-      for (let i = 1; i < prev.length; i++) {
-        const d = haversine(userPos.lat, userPos.lng, prev[i].lat, prev[i].lng);
-        if (d < bestDist) { bestDist = d; bestIdx = i; }
-      }
-      // Solo recortar si el usuario está cerca de la ruta planificada
-      if (bestDist > OFF_ROUTE_THRESHOLD_KM * 2) return prev;
-      return bestIdx > 0 ? prev.slice(bestIdx) : prev;
-    });
-  }, []);
-
-  const onGpsUpdate = useCallback((point: GPSPoint) => {
-    if (paused) return;
-    const next = { lat: point.lat, lng: point.lng };
-    setHeading(point.heading);
-    setCurrent(next);
-    setDistKm((prevDistKm) => {
-      const last = lastDistancePointRef.current;
-      if (!last) {
-        lastDistancePointRef.current = next;
-        return prevDistKm;
-      }
-      const delta = haversine(last.lat, last.lng, next.lat, next.lng);
-      const lowAccuracy = Number.isFinite(point.accuracyM) && Number(point.accuracyM) > 80;
-      if (lowAccuracy || delta < MIN_DISTANCE_DELTA_KM || delta > MAX_DISTANCE_DELTA_KM) {
-        return prevDistKm;
-      }
-      lastDistancePointRef.current = next;
-      return prevDistKm + delta;
-    });
-    setPoints((prev) => {
-      if (!prev.length) return [next];
-      const last = prev[prev.length - 1];
-      const delta = haversine(last.lat, last.lng, next.lat, next.lng);
-      if (delta >= MIN_TRAIL_POINT_DELTA_KM) {
-        const appended = [...prev, next];
-        return appended.length > MAX_TRAIL_POINTS ? appended.slice(-MAX_TRAIL_POINTS) : appended;
-      }
-      return prev;
-    });
-    trimPlannedRoute(next);
-    maybeRecalculateRouteRef.current(next);
-  }, [paused, trimPlannedRoute]);
-
-  useEffect(() => {
-    reroutingRef.current = false;
-    lastRerouteAtRef.current = 0;
-    progressRef.current = null;
-  }, [destination?.lat, destination?.lng]);
 
   const buildEmergencyMessage = async (): Promise<string | null> => {
     try {
@@ -404,232 +230,20 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
     }
   };
 
-  const initRoute = async () => {
-    try {
-      setLoading(true);
-      setRouteActive(true);
-      setActiveRouteProgress({ distanciaKm: 0, calorias: 0, tiempoSegundos: 0, tipo });
-
-      const baseUrl = (settings.apiBaseUrl ?? '').trim();
-      const weather = baseUrl ? await detectExtremeWeather(baseUrl) : { shouldAlert: false, message: '', clima: null };
-      const climaActual = {
-        condicion: weather.clima?.condicion ?? 'Sin datos',
-        temperaturaC: weather.clima ? Number(weather.clima.temperaturaC) : null,
-      };
-      setLastKnownClimate(climaActual);
-      if (weather.shouldAlert) {
-        await notifyExtremeWeather(weather.message);
-      }
-
-      const initial = await gps.getCurrent();
-      if (!initial) {
-        Alert.alert('GPS', gps.error ?? 'No se pudo obtener ubicación.');
-        navigation.goBack();
-        return;
-      }
-
-      const gpsStart = { lat: initial.lat, lng: initial.lng };
-      const start =
-        routeStart && haversine(gpsStart.lat, gpsStart.lng, routeStart.lat, routeStart.lng) > MAX_ROUTE_START_DISTANCE_KM
-          ? routeStart
-          : gpsStart;
-      setCurrent(start);
-      setStartPoint(start);
-      setHeading(initial.heading);
-      setPoints([start]);
-      setDistKm(0);
-      lastDistancePointRef.current = start;
-      const startTs = Date.now();
-      setStartedAt(startTs);
-      setElapsedSec(0);
-
-      if (destination) {
-        try {
-          const routeData = await getOsrmRoute({
-            mode,
-            startLat: start.lat,
-            startLng: start.lng,
-            endLat: destination.lat,
-            endLng: destination.lng,
-          });
-          setPlannedRoutePoints(routeData.geometry);
-          setPlannedDurationMin(routeData.durationMin);
-        } catch (e: any) {
-          setPlannedRoutePoints([]);
-          setPlannedDurationMin(null);
-          Alert.alert('Ruta', e?.message ?? 'No se pudo calcular la ruta.');
-        }
-      }
-
-      if (saveToDb && baseUrl) {
-        const usuarioId = requireUserId();
-        const act = await apiRequest<ActivityStartResponse>(
-          baseUrl,
-          `/actividades/iniciar?usuarioId=${usuarioId}&rutaId=${route.params?.rutaId ?? ''}&tipo=${tipo}`,
-          { method: 'POST', token: user?.token }
-        );
-        setActivityId(Number(act.id));
-      }
-
-      const ok = await gps.startTracking(onGpsUpdate);
-      if (!ok) {
-        Alert.alert('GPS', gps.error ?? 'No se pudo iniciar seguimiento.');
-      }
-    } catch (e: any) {
-      Alert.alert('Ruta', e?.message ?? 'No se pudo iniciar la ruta.');
-      navigation.goBack();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  React.useEffect(() => {
-    void initRoute();
-    return () => {
-      gps.stopTracking();
-      setRouteActive(false);
-      resetActiveRouteProgress();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  React.useEffect(() => {
-    setActiveRouteProgress({
-      distanciaKm: distKm,
-      calorias,
-      tiempoSegundos: elapsedSec,
-      tipo,
-    });
-  }, [calorias, distKm, elapsedSec, setActiveRouteProgress, tipo]);
-
-  React.useEffect(() => {
-    if (!startedAt || paused) return;
-    const id = setInterval(() => updateTimer(startedAt), 2000);
-    return () => clearInterval(id);
-  }, [startedAt, paused]);
-
-  const onTogglePause = async () => {
-    const nextPaused = !paused;
-    setPaused(nextPaused);
-    if (nextPaused) {
-      gps.stopTracking();
-      // Conservar el último punto conocido para que al reanudar
-      // el primer fix GPS calcule el delta desde aquí y no lo descarte.
-      // El filtro MAX_DISTANCE_DELTA_KM protege ante saltos irreales.
-      if (current) lastDistancePointRef.current = current;
-      return;
-    }
-    await gps.startTracking(onGpsUpdate);
-  };
-
   const onFinishPress = () => {
-    if (!current) return;
-    gps.stopTracking();
-    setFinishPoint(current);
+    if (!tracking.current) return;
+    tracking.beginFinishConfirmation();
     setShowFinishModal(true);
   };
 
-  const finalizeRoute = async () => {
-    try {
-      setLoading(true);
-      setShowFinishModal(false);
-      const baseUrl = (settings.apiBaseUrl ?? '').trim();
-      if (saveToDb && activityId && baseUrl) {
-        await apiRequest(baseUrl, `/actividades/${activityId}/finalizar`, {
-          method: 'PUT',
-          token: user?.token,
-          body: JSON.stringify({
-            distanciaKm: distKm,
-            calorias,
-            tiempoSegundos: elapsedSec,
-          }),
-        });
-      }
+  const onFinalizeConfirmed = () => {
+    setShowFinishModal(false);
+    void tracking.completeFinalize();
+  };
 
-      const today = new Date();
-      try {
-        await addTodayStats(distKm, calorias, elapsedSec, today);
-      } catch {
-        Alert.alert('Estadísticas', 'No se pudieron guardar los datos del día. Se intentará en la próxima ruta.');
-      }
-      if (saveToDb && user?.userId && baseUrl) {
-        try {
-          await syncStatsToBackend(baseUrl, {
-            userId: user.userId,
-            fecha: today.toISOString().split('T')[0],
-            distanciaKm: distKm,
-            calorias,
-            tipo,
-          }, user.token);
-        } catch {
-          Alert.alert('Sincronización', 'No se pudo sincronizar al servidor, pero tu ruta sí se guardó en el celular.');
-        }
-      }
-
-      await schedulePostRouteIfEnabled();
-      setRouteActive(false);
-      resetActiveRouteProgress();
-
-      const nivelActual = route.params?.nivelSeguridad ?? '—';
-      let floraTotal = 0;
-      let faunaTotal = 0;
-      let floraNombres: string[] = [];
-      let faunaNombres: string[] = [];
-
-      if (current) {
-        let envRes: ExplorerEnvResponse | null = null;
-        if (baseUrl) {
-          const explorerPromise = apiRequest<ExplorerEnvResponse>(
-            baseUrl,
-            `/explorer/explorar${toQuery({ lat: current.lat, lng: current.lng, nombre: route.params?.destNombre ?? 'Lugar visitado', tipo: 'parque' })}`,
-            { method: 'POST', timeoutMs: 6000 }
-          );
-          const timeoutPromise = new Promise<null>((res) => setTimeout(() => res(null), 5000));
-          envRes = await Promise.race([explorerPromise.catch(() => null), timeoutPromise]);
-        }
-        if (!envRes?.especies || (Number(envRes.especies?.floraTotal ?? 0) === 0 && Number(envRes.especies?.faunaTotal ?? 0) === 0)) {
-          const { getEspeciesPorUbicacion } = await import('../services/gbifService');
-          const especies = await getEspeciesPorUbicacion(current.lat, current.lng, 15);
-          floraTotal = especies.floraTotal;
-          faunaTotal = especies.faunaTotal;
-          floraNombres = especies.flora.map((x) => x.nombre).filter(Boolean).slice(0, 5);
-          faunaNombres = especies.fauna.map((x) => x.nombre).filter(Boolean).slice(0, 5);
-        } else if (envRes?.especies) {
-          floraTotal = Number(envRes.especies?.floraTotal ?? 0);
-          faunaTotal = Number(envRes.especies?.faunaTotal ?? 0);
-          floraNombres = (Array.isArray(envRes.especies?.flora) ? envRes.especies.flora : [])
-            .map((x) => String(x?.nombre ?? '').trim())
-            .filter(Boolean)
-            .slice(0, 5);
-          faunaNombres = (Array.isArray(envRes.especies?.fauna) ? envRes.especies.fauna : [])
-            .map((x) => String(x?.nombre ?? '').trim())
-            .filter(Boolean)
-            .slice(0, 5);
-        }
-      }
-
-      navigation.replace('RouteFinished', {
-        actividadId: activityId ?? undefined,
-        summary: {
-          distanciaKm: distKm,
-          calorias,
-          tiempoSegundos: elapsedSec,
-          endLat: current?.lat ?? 0,
-          endLng: current?.lng ?? 0,
-          tipo,
-        },
-        autoOpenEnvironment: false,
-        nivelActual,
-        floraTotal,
-        faunaTotal,
-        floraNombres,
-        faunaNombres,
-      });
-    } catch (e: any) {
-      Alert.alert('Finalizar', e?.message ?? 'No se pudo finalizar la ruta.');
-    } finally {
-      setLoading(false);
-    }
+  const onFinishModalCancel = () => {
+    setShowFinishModal(false);
+    void tracking.abortFinishConfirmation();
   };
 
   return (
@@ -637,29 +251,31 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
       <View style={styles.mapWrap}>
         <LiveMap
           region={region}
-          points={points}
-          current={current}
-          startPoint={startPoint}
-          destination={destination}
-          plannedRoutePoints={plannedRoutePoints}
-          finalPoint={finishPoint}
-          heading={heading}
+          points={tracking.points}
+          current={tracking.current}
+          startPoint={tracking.startPoint}
+          destination={tracking.destination}
+          plannedRoutePoints={tracking.plannedRoutePoints}
+          finalPoint={tracking.finishPoint}
+          heading={tracking.heading}
           followUserLocation
-          permissionOk={gps.permissionGranted}
+          permissionOk={tracking.permissionGranted}
           interactionMode="route_navigation"
         />
         <View style={styles.mapOverlay}>
           <Text style={styles.gpsLabel}>GPS activo</Text>
-          <Text style={styles.gpsTitle}>{route.params?.destNombre ? `Ruta a ${route.params.destNombre}` : 'Ruta en tiempo real'}</Text>
-          {plannedDurationMin != null ? <Text style={styles.gpsLabel}>ETA: {Math.max(1, Math.round(plannedDurationMin))} min</Text> : null}
+          <Text style={styles.gpsTitle}>{route.params?.destNombre ? `Ruta a ${route.params.destNombre}` : tracking.routeTitle}</Text>
+          {tracking.plannedDurationMin != null ? (
+            <Text style={styles.gpsLabel}>ETA: {Math.max(1, Math.round(tracking.plannedDurationMin))} min</Text>
+          ) : null}
         </View>
       </View>
 
       <Card style={styles.bottom}>
         <View style={styles.statsRow}>
-          <Stat icon="📍" label="Km" value={formatKm(distKm)} />
-          <Stat icon="🕐" label="Tiempo" value={formatHMS(elapsedSec)} />
-          <Stat icon="🔥" label="Calorías" value={`${Math.round(calorias)} kcal`} />
+          <Stat icon="📍" label="Km" value={formatKm(tracking.distKm)} />
+          <Stat icon="🕐" label="Tiempo" value={formatHMS(tracking.elapsedSec)} />
+          <Stat icon="🔥" label="Calorías" value={`${Math.round(tracking.calorias)} kcal`} />
         </View>
         <View style={styles.buttonsRow}>
           <Pressable
@@ -670,9 +286,14 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           >
             <Text style={styles.robotIcon}>🤖</Text>
           </Pressable>
-          <LargeButton title={paused ? '▶ Reanudar' : '⏸ Pausar'} onPress={() => void onTogglePause()} variant="neutral" />
+          <LargeButton title={tracking.paused ? '▶ Reanudar' : '⏸ Pausar'} onPress={() => void tracking.togglePause()} variant="neutral" />
         </View>
-        <LargeButton title={loading ? 'Procesando…' : '🏁 Finalizar ruta'} onPress={onFinishPress} variant="neutral" disabled={loading} />
+        <LargeButton
+          title={tracking.finishing ? 'Procesando…' : '🏁 Finalizar ruta'}
+          onPress={onFinishPress}
+          variant="neutral"
+          disabled={tracking.finishing}
+        />
         <LargeButton title="🚨 Emergencia" onPress={() => void loadContacts()} variant="danger" />
       </Card>
 
@@ -722,14 +343,12 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
                   return c.nombre.toLowerCase().includes(q);
                 })
                 .slice(0, 25)
-                .map((c) => {
-                return (
+                .map((c) => (
                   <Pressable key={c.id} onPress={() => void sendLocationToContactWhatsApp(c)} style={styles.contactRow}>
                     <Text style={styles.contactName}>{c.nombre}</Text>
                     <Text style={styles.contactPhone}>{c.numero || 'Sin número'}</Text>
                   </Pressable>
-                );
-              })}
+                ))}
             </View>
             <View style={styles.modalActions}>
               <LargeButton
@@ -744,16 +363,16 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
         </View>
       </Modal>
 
-      <Modal visible={showFinishModal} transparent animationType="fade" onRequestClose={() => setShowFinishModal(false)}>
+      <Modal visible={showFinishModal} transparent animationType="fade" onRequestClose={onFinishModalCancel}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>🎉 ¡Felicidades! Terminaste tu ruta</Text>
-            <Text style={styles.modalSub}>Distancia: {formatKm(distKm)}</Text>
-            <Text style={styles.modalSub}>Tiempo: {formatHMS(elapsedSec)}</Text>
-            <Text style={styles.modalSub}>Calorías: {Math.round(calorias)} kcal</Text>
+            <Text style={styles.modalSub}>Distancia: {formatKm(tracking.distKm)}</Text>
+            <Text style={styles.modalSub}>Tiempo: {formatHMS(tracking.elapsedSec)}</Text>
+            <Text style={styles.modalSub}>Calorías: {Math.round(tracking.calorias)} kcal</Text>
             <View style={styles.modalActions}>
-              <LargeButton title="Finalizar y guardar" onPress={() => void finalizeRoute()} variant="primary" />
-              <LargeButton title="Cancelar" onPress={() => setShowFinishModal(false)} variant="outlinePrimary" />
+              <LargeButton title="Finalizar y guardar" onPress={onFinalizeConfirmed} variant="primary" disabled={tracking.finishing} />
+              <LargeButton title="Seguir caminando" onPress={onFinishModalCancel} variant="outlinePrimary" disabled={tracking.finishing} />
             </View>
           </View>
         </View>
@@ -788,12 +407,6 @@ const styles = StyleSheet.create({
   robotBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary },
   robotIcon: { fontSize: 28 },
   adviceText: { color: colors.muted, fontWeight: '700', fontFamily, lineHeight: 20 },
-  emergencySection: { borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FEF2F2', padding: 10, gap: 8 },
-  emergencyTitle: { color: colors.text, fontWeight: '900', fontSize: 14, fontFamily },
-  emergencyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  emergencyPill: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  emergencyName: { color: colors.text, fontWeight: '800', fontSize: 11, fontFamily },
-  emergencyNum: { color: colors.primary, fontWeight: '900', fontSize: 12, fontFamily },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 18 },
   modalCard: { width: '100%', maxWidth: 460, borderRadius: 18, backgroundColor: colors.surface, padding: 16, gap: 10 },
   modalTitle: { color: colors.text, fontWeight: '900', fontFamily, fontSize: 16, textAlign: 'center' },
@@ -811,7 +424,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   contactRow: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 10, backgroundColor: colors.surface },
-  contactRowOn: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   contactName: { color: colors.text, fontWeight: '800', fontFamily },
   contactPhone: { color: colors.muted, fontWeight: '700', fontFamily, fontSize: 12 },
 });

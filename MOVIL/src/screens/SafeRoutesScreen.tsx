@@ -540,11 +540,6 @@ export function SafeRoutesScreen() {
           setRequireModal({ visible: false, ruta: null });
           navigation.navigate('Register');
         }}
-        onContinueNoSave={() => {
-          const r = requireModal.ruta;
-          setRequireModal({ visible: false, ruta: null });
-          if (r) startFromRoute(r, false);
-        }}
       />
 
       <View style={styles.header}>

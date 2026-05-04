@@ -119,10 +119,15 @@ public class ActividadService {
 
         double nuevaDist = (a.getDistanciaRecorrida() != null ? a.getDistanciaRecorrida().doubleValue() : 0.0) + distIncremental;
         double pesoKg = (a.getUsuario() != null && a.getUsuario().getPeso() != null) ? a.getUsuario().getPeso().doubleValue() : 70.0;
-        double calorias = gpsCalculator.calcularCalorias(nuevaDist, pesoKg, a.getTipo());
+        int tiempoSegundos = 0;
+        if (a.getIniciadaEn() != null) {
+            tiempoSegundos = Math.max(0, (int) ChronoUnit.SECONDS.between(a.getIniciadaEn(), LocalDateTime.now()));
+        }
+        double calorias = gpsCalculator.calcularCalorias(nuevaDist, pesoKg, a.getTipo(), tiempoSegundos);
 
         a.setDistanciaRecorrida(BigDecimal.valueOf(nuevaDist));
         a.setCalorias(BigDecimal.valueOf(calorias));
+        a.setTiempoSegundos(tiempoSegundos);
         a.setGpsRecorrido(mapper.writeValueAsString(gpsRecorrido));
         return actividadRepository.save(a);
     }

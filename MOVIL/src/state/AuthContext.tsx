@@ -5,7 +5,7 @@ import { getJson, remove, setJson } from '../services/storage';
 import { useSettings } from './SettingsContext';
 import { syncFcmTokenToBackend } from '../services/push';
 
-const AUTH_BYPASS_ENABLED = true;
+const AUTH_BYPASS_ENABLED = false;
 const AUTH_BYPASS_USER_ID = 20;
 const AUTH_BYPASS_TOKEN = '';
 

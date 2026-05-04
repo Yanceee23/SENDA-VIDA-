@@ -81,9 +81,9 @@ export function useGPS() {
       try {
         watchSub.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.High,
-            timeInterval: 3_000,
-            distanceInterval: 3,
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 1_000,
+            distanceInterval: 2,
             mayShowUserSettingsDialog: true,
           },
           (position) => {

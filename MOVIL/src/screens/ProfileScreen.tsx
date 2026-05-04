@@ -6,6 +6,7 @@ import { apiRequest } from '../services/api';
 import { useAuth } from '../state/AuthContext';
 import { useSettings } from '../state/SettingsContext';
 import { colors } from '../theme/colors';
+import { cmToHeightMetersText, formatHeightMetersInput, heightMetersError, parseHeightMetersToCm } from '../utils/height';
 
 export function ProfileScreen() {
   const { settings } = useSettings();
@@ -19,6 +20,7 @@ export function ProfileScreen() {
   const [altura, setAltura] = useState('');
   const [genero, setGenero] = useState(user?.genero ?? '');
   const [preferencia, setPreferencia] = useState(user?.preferencia ?? '');
+  const alturaError = heightMetersError(altura);
 
   const load = async () => {
     if (status !== 'signedIn') return;
@@ -30,7 +32,7 @@ export function ProfileScreen() {
       setNombre(String(res?.nombre ?? ''));
       setEdad(res?.edad != null ? String(res.edad) : '');
       setPeso(res?.peso != null ? String(res.peso) : '');
-      setAltura(res?.altura != null ? String(res.altura) : '');
+      setAltura(cmToHeightMetersText(res?.altura));
       setGenero(res?.genero != null ? String(res.genero) : '');
       setPreferencia(res?.preferencia != null ? String(res.preferencia) : '');
     } catch (e: any) {
@@ -49,11 +51,16 @@ export function ProfileScreen() {
     if (status !== 'signedIn') return;
     try {
       setLoading(true);
+      if (alturaError) {
+        Alert.alert('Revisa tus datos', alturaError);
+        return;
+      }
       const id = requireUserId();
       const body: any = { nombre: nombre.trim() };
       if (edad) body.edad = Number(edad);
       if (peso) body.peso = Number(peso);
-      if (altura) body.altura = Number(altura);
+      const alturaCm = parseHeightMetersToCm(altura);
+      if (alturaCm != null) body.altura = alturaCm;
       if (genero) body.genero = genero;
       if (preferencia) body.preferencia = preferencia;
       await apiRequest(settings.apiBaseUrl, `/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(body) });
@@ -94,7 +101,15 @@ export function ProfileScreen() {
         <TextField label="Nombre" value={nombre} onChangeText={setNombre} placeholder="Tu nombre" autoCapitalize="words" />
         <TextField label="Edad" value={edad} onChangeText={setEdad} placeholder="Ej: 25" keyboardType="numeric" />
         <TextField label="Peso (kg)" value={peso} onChangeText={setPeso} placeholder="Ej: 70" keyboardType="numeric" />
-        <TextField label="Altura (cm)" value={altura} onChangeText={setAltura} placeholder="Ej: 170" keyboardType="numeric" />
+        <TextField
+          label="Altura (m)"
+          value={altura}
+          onChangeText={(v) => setAltura(formatHeightMetersInput(v))}
+          placeholder="Ej: 1.70"
+          keyboardType="numeric"
+          hint="Formato automatico X.XX (ej. 150 -> 1.50)"
+          error={alturaError}
+        />
         <TextField label="Género" value={genero} onChangeText={setGenero} placeholder="otro" />
         <TextField label="Preferencia" value={preferencia} onChangeText={setPreferencia} placeholder="ciclismo/senderismo/ambos" />
 

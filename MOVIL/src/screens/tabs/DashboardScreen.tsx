@@ -23,7 +23,9 @@ import { useSettings } from '../../state/SettingsContext';
 import { colors } from '../../theme/colors';
 import type { AppStackParamList } from '../../types/navigation';
 import { fontFamily } from '../../theme/typography';
-import { formatHMS } from '../../utils/format';
+import { formatHMS, formatKm } from '../../utils/format';
+import { LiveMap } from '../../components/LiveMap';
+import { useRouteTracking } from '../../state/RouteTrackingContext';
 import { Card } from '../../components/Card';
 import { LargeButton } from '../../components/LargeButton';
 import { MetricCard } from '../../components/MetricCard';
@@ -132,12 +134,43 @@ export function DashboardScreen() {
   const [pendingImageBase64, setPendingImageBase64] = useState<{ base64: string; mimeType: string } | null>(null);
   const routeAdviceBlocks = useMemo(() => parseRouteAdviceBlocks(assistantResponse), [assistantResponse]);
 
-  const goStart = (tipo: 'ciclismo' | 'senderismo') => {
+  const routeTracking = useRouteTracking();
+  const sessionInline = routeTracking.isSessionLive && routeTracking.sessionOrigin === 'dashboard';
+
+  const [finishRouteModalVisible, setFinishRouteModalVisible] = useState(false);
+
+  const goStart = async (tipo: 'ciclismo' | 'senderismo') => {
     if (status !== 'signedIn') {
       setRequireModal({ visible: true, tipo });
       return;
     }
-    navigation.navigate('ActiveRoute', { tipo });
+    const ok = await routeTracking.beginSession({ tipo, origin: 'dashboard', saveToDb: true });
+    if (!ok) return;
+  };
+
+  const routeRegion = useMemo(() => {
+    if (!routeTracking.current) return undefined;
+    return {
+      latitude: routeTracking.current.lat,
+      longitude: routeTracking.current.lng,
+      latitudeDelta: 0.012,
+      longitudeDelta: 0.012,
+    };
+  }, [routeTracking.current]);
+
+  const cannotStartAnotherRoute = routeTracking.isSessionLive || routeTracking.initializing;
+
+  const onDashboardFinishPress = () => {
+    if (!routeTracking.current) return;
+    routeTracking.beginFinishConfirmation();
+    setFinishRouteModalVisible(true);
+  };
+
+  const onAbandonDashboardRoute = () => {
+    Alert.alert('Abandonar ruta', '¿Seguro? No se guardará esta sesión.', [
+      { text: 'No', style: 'cancel' },
+      { text: 'Sí, abandonar', style: 'destructive', onPress: () => routeTracking.cancelSession() },
+    ]);
   };
 
   const cargarClima = async () => {
@@ -338,11 +371,6 @@ export function DashboardScreen() {
           setRequireModal((p) => ({ ...p, visible: false }));
           navigation.navigate('Register');
         }}
-        onContinueNoSave={() => {
-          const tipo = requireModal.tipo;
-          setRequireModal((p) => ({ ...p, visible: false }));
-          navigation.navigate('ActiveRoute', { tipo, saveToDb: false });
-        }}
       />
       <Modal
         visible={assistantVisible}
@@ -528,6 +556,89 @@ export function DashboardScreen() {
         )}
       </Card>
 
+      {routeTracking.initializing && !sessionInline ? (
+        <Card style={styles.preparingCard}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.preparingText}>Preparando GPS y ruta…</Text>
+        </Card>
+      ) : null}
+
+      {sessionInline ? (
+        <Card style={styles.liveRouteCard}>
+          <Text style={styles.liveRouteTitle}>{routeTracking.routeTitle}</Text>
+          <Text style={styles.liveRouteHint}>Mapa en vivo · los km suman mientras te mueves</Text>
+          <View style={styles.liveMapBox}>
+            <LiveMap
+              region={routeRegion}
+              points={routeTracking.points}
+              current={routeTracking.current}
+              startPoint={routeTracking.startPoint}
+              destination={routeTracking.destination}
+              plannedRoutePoints={routeTracking.plannedRoutePoints}
+              finalPoint={routeTracking.finishPoint}
+              heading={routeTracking.heading}
+              followUserLocation
+              permissionOk={routeTracking.permissionGranted}
+              interactionMode="follow_zoom"
+            />
+          </View>
+          <View style={styles.liveStatsRow}>
+            <Text style={styles.liveStat} accessibilityLabel={`Distancia ${formatKm(routeTracking.distKm)}`}>
+              📍 {formatKm(routeTracking.distKm)}
+            </Text>
+            <Text style={styles.liveStat}>🕐 {formatHMS(routeTracking.elapsedSec)}</Text>
+            <Text style={styles.liveStat}>🔥 {routeTracking.calorias} kcal</Text>
+          </View>
+          <LargeButton
+            title={routeTracking.paused ? '▶ Reanudar' : '⏸ Pausar'}
+            onPress={() => void routeTracking.togglePause()}
+            variant="neutral"
+            disabled={routeTracking.finishing}
+          />
+          <LargeButton
+            title={routeTracking.finishing ? 'Procesando…' : '🏁 Finalizar ruta'}
+            onPress={onDashboardFinishPress}
+            variant="primary"
+            disabled={routeTracking.finishing}
+          />
+          <Pressable onPress={onAbandonDashboardRoute} style={styles.abandonLink} accessibilityRole="button">
+            <Text style={styles.abandonLinkText}>Abandonar sin guardar</Text>
+          </Pressable>
+        </Card>
+      ) : null}
+
+      <Modal visible={finishRouteModalVisible} transparent animationType="fade" onRequestClose={() => {
+        setFinishRouteModalVisible(false);
+        void routeTracking.abortFinishConfirmation();
+      }}>
+        <View style={styles.finishModalBackdrop}>
+          <View style={styles.finishModalCard}>
+            <Text style={styles.finishModalTitle}>¿Finalizar ruta?</Text>
+            <Text style={styles.finishModalSub}>Distancia: {formatKm(routeTracking.distKm)}</Text>
+            <Text style={styles.finishModalSub}>Tiempo: {formatHMS(routeTracking.elapsedSec)}</Text>
+            <Text style={styles.finishModalSub}>Calorías: {routeTracking.calorias} kcal</Text>
+            <LargeButton
+              title={routeTracking.finishing ? 'Guardando…' : 'Finalizar y guardar'}
+              onPress={() => {
+                setFinishRouteModalVisible(false);
+                void routeTracking.completeFinalize();
+              }}
+              variant="primary"
+              disabled={routeTracking.finishing}
+            />
+            <LargeButton
+              title="Seguir caminando"
+              onPress={() => {
+                setFinishRouteModalVisible(false);
+                void routeTracking.abortFinishConfirmation();
+              }}
+              variant="outlinePrimary"
+              disabled={routeTracking.finishing}
+            />
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.metricsRow}>
         <MetricCard icon="📍" value={kmHoyEnVivo.toFixed(2)} label={routeActive ? 'Km hoy (en vivo)' : 'Km hoy'} />
         <MetricCard icon="🔥" value={`${Math.round(caloriasHoyEnVivo)}`} label="Calorías hoy" />
@@ -543,15 +654,17 @@ export function DashboardScreen() {
 
       <LargeButton
         title="Iniciar ruta en bici"
-        onPress={() => goStart('ciclismo')}
+        onPress={() => void goStart('ciclismo')}
         variant="primary"
         left={<Text style={styles.bigEmoji}>🚴</Text>}
+        disabled={cannotStartAnotherRoute}
       />
       <LargeButton
         title="Iniciar caminata"
-        onPress={() => goStart('senderismo')}
+        onPress={() => void goStart('senderismo')}
         variant="brown"
         left={<Text style={styles.bigEmoji}>🥾</Text>}
+        disabled={cannotStartAnotherRoute}
       />
       <LargeButton
         title="Ir a un lugar"
@@ -651,6 +764,37 @@ const styles = StyleSheet.create({
   refresh: { color: colors.muted, fontSize: 16, fontFamily, fontWeight: '800' },
   weatherNow: { color: colors.text, fontSize: 18, fontWeight: '900', fontFamily },
   weatherSub: { color: colors.muted, fontSize: 14, fontWeight: '600', fontFamily },
+
+  preparingCard: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  preparingText: { color: colors.muted, fontWeight: '700', fontFamily, flex: 1 },
+
+  liveRouteCard: { gap: 10, overflow: 'hidden' },
+  liveRouteTitle: { color: colors.text, fontWeight: '900', fontFamily, fontSize: 16 },
+  liveRouteHint: { color: colors.muted, fontWeight: '600', fontFamily, fontSize: 12 },
+  liveMapBox: { height: 240, borderRadius: 16, overflow: 'hidden', backgroundColor: '#1C2B2A' },
+  liveStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
+  liveStat: { color: colors.text, fontWeight: '800', fontFamily, fontSize: 13 },
+
+  abandonLink: { paddingVertical: 8, alignItems: 'center' },
+  abandonLinkText: { color: colors.muted, fontWeight: '700', fontFamily, fontSize: 13 },
+
+  finishModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  finishModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    padding: 16,
+    gap: 10,
+  },
+  finishModalTitle: { color: colors.text, fontWeight: '900', fontFamily, fontSize: 17, textAlign: 'center' },
+  finishModalSub: { color: colors.muted, fontWeight: '700', fontFamily, textAlign: 'center' },
 
   metricsRow: { flexDirection: 'row', gap: 12 },
 

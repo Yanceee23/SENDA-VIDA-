@@ -76,7 +76,7 @@ export function LoginScreen({ navigation }: Props) {
       try {
         await apiRequest<{ ok: boolean }>(settings.apiBaseUrl, '/health', {
           method: 'GET',
-          timeoutMs: 5000,
+          timeoutMs: 15000,
         });
       } catch {
         Alert.alert(
