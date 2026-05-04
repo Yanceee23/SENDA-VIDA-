@@ -3,10 +3,10 @@
 `.env` en `MOVIL/` (no se sube a git):
 
 ```
-EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:8084/api
+EXPO_PUBLIC_API_BASE_URL=https://senda-vida.onrender.com/api
 ```
 
-`10.0.2.2` es el host de tu máquina visto desde el AVD.
+Usa la API pública en Render para evitar problemas de conectividad y autenticación.
 
 ### Herramientas
 

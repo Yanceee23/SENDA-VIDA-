@@ -9,7 +9,7 @@
 - `npx tsc --noEmit`: OK (sin errores de tipos).
 - `npx expo config --type public`: OK (configuracion Expo valida, permisos de ubicacion presentes).
 - `adb devices`: dispositivo detectado, pero en estado `unauthorized` durante esta corrida CLI.
-- Expo LAN levantado correctamente en `http://localhost:8090` para conexion manual desde Expo Go.
+- API pública validada en `https://senda-vida.onrender.com/api` para pruebas desde Expo Go.
 
 ## Checklist rapido (flujo principal)
 - Botones de arranque confirmados en inicio:
@@ -43,5 +43,5 @@
 
 ## Nota de ejecucion en dispositivo
 - El usuario indico que inicialmente "no corrio nada/no mostro nada" en telefono.
-- Se levanto servidor Expo por LAN y se compartio URL `exp://192.168.1.123:8090` para prueba directa.
+- Se compartio la URL `https://senda-vida.onrender.com/api` para prueba directa de conectividad API.
 - No se recibio confirmacion final interactiva del resultado en la app desde el formulario de cierre, por lo que la validacion visual final queda pendiente de confirmacion del usuario.

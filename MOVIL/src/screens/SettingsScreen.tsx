@@ -9,7 +9,7 @@ import { Card } from '../components/Card';
 import { LargeButton } from '../components/LargeButton';
 import { TextField } from '../components/TextField';
 import { apiRequest } from '../services/api';
-import { DEFAULT_API_BASE_URL, EMULATOR_API_BASE_URL, normalizeApiBaseUrl } from '../config';
+import { DEFAULT_API_BASE_URL, normalizeApiBaseUrl } from '../config';
 
 export function SettingsScreen() {
   const { settings, updateSettings } = useSettings();
@@ -31,7 +31,7 @@ export function SettingsScreen() {
 
   const saveApiBaseUrl = () => {
     if (!apiBaseUrlTrimmed) {
-      Alert.alert('URL vacía', 'Escribe una URL como: http://192.168.1.123:8084/api');
+      Alert.alert('URL vacía', 'Escribe una URL como: https://senda-vida.onrender.com/api');
       return;
     }
     const normalized = normalizeApiBaseUrl(apiBaseUrlTrimmed);
@@ -41,7 +41,7 @@ export function SettingsScreen() {
 
   const testApiConnection = async () => {
     if (!apiBaseUrlTrimmed) {
-      Alert.alert('URL vacía', 'Escribe una URL como: http://192.168.1.123:8084/api');
+      Alert.alert('URL vacía', 'Escribe una URL como: https://senda-vida.onrender.com/api');
       return;
     }
     const normalized = normalizeApiBaseUrl(apiBaseUrlTrimmed);
@@ -58,8 +58,8 @@ export function SettingsScreen() {
       }
     } catch (e: any) {
       const msg = String(e?.message ?? e ?? 'Error de red');
-      const hint = msg.includes('8084') || msg.includes('timeout') || msg.includes('Tiempo de espera')
-        ? '\n\nRevisa: 1) Backend corriendo en puerto 8084. 2) Firewall de Windows. 3) Celular en la misma Wi‑Fi que la PC.'
+      const hint = msg.includes('timeout') || msg.includes('Tiempo de espera')
+        ? '\n\nRevisa: 1) URL configurada en Ajustes. 2) API de Render disponible. 3) Conexión a internet del dispositivo.'
         : '';
       Alert.alert('No se pudo conectar', msg + hint);
     } finally {
@@ -106,24 +106,20 @@ export function SettingsScreen() {
       <Card style={styles.card}>
         <Text style={styles.sectionTitle}>CONEXIÓN (API)</Text>
         <Text style={styles.help}>
-          Android físico (Expo Go): usa la IP de tu PC en la misma Wi‑Fi. Emulador Android: usa 10.0.2.2.
+          Usa la API pública segura de Render para mantener la sesión autenticada.
         </Text>
 
         <TextField
           label="API Base URL"
           value={apiBaseUrlDraft}
           onChangeText={setApiBaseUrlDraft}
-          placeholder="http://192.168.1.123:8084/api"
+          placeholder="https://senda-vida.onrender.com/api"
         />
 
         <View style={styles.presetRow}>
           <MiniButton
-            title="Producción (Render)"
+            title="API pública (Render)"
             onPress={() => setApiBaseUrlDraft(DEFAULT_API_BASE_URL)}
-          />
-          <MiniButton
-            title="Emulador (10.0.2.2:8084)"
-            onPress={() => setApiBaseUrlDraft(EMULATOR_API_BASE_URL)}
           />
         </View>
 

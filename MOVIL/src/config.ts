@@ -2,21 +2,18 @@
 const ENV_API_BASE_URL = String(process.env.EXPO_PUBLIC_API_BASE_URL ?? '').trim();
 
 export const PRODUCTION_API_BASE_URL = 'https://senda-vida.onrender.com/api';
-// Dirección típica del backend desde el emulador Android (10.0.2.2 = host). En físico mejor el env.
-export const EMULATOR_API_BASE_URL = 'http://10.0.2.2:8084/api';
+// Se mantiene por compatibilidad en la UI de ajustes.
+export const EMULATOR_API_BASE_URL = PRODUCTION_API_BASE_URL;
 // Sin env, la app apunta al backend de producción en Render.
 export const DEFAULT_API_BASE_URL = normalizeApiBaseUrl(ENV_API_BASE_URL || PRODUCTION_API_BASE_URL);
 
-// Ponemos http/https, puerto 8084 si falta en local/IP y el sufijo /api.
+// Normaliza protocolo y fuerza el sufijo /api.
 export function normalizeApiBaseUrl(raw: string): string {
   let s = String(raw ?? '').trim();
   if (!s) return '';
-  if (!/^https?:\/\//i.test(s)) s = `http://${s}`;
+  if (!/^https?:\/\//i.test(s)) s = `https://${s}`;
   try {
     const u = new URL(s);
-    if (!u.port && (u.hostname === 'localhost' || u.hostname === '10.0.2.2' || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(u.hostname))) {
-      u.port = '8084';
-    }
     let path = u.pathname.replace(/\/+$/, '');
     if (!path.endsWith('/api')) path = path ? `${path}/api` : '/api';
     return `${u.origin}${path}`;

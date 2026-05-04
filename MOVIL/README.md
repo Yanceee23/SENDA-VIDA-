@@ -25,7 +25,7 @@ CREATE DATABASE senda_vida;
 ```
 
 El backend usa por defecto:
-- **Host:** localhost
+- **Host:** configurado por entorno
 - **Puerto:** 5433
 - **Base de datos:** senda_vida
 - **Usuario:** postgres
@@ -44,9 +44,9 @@ En Linux/Mac:
 ./mvnw spring-boot:run
 ```
 
-El backend corre en **http://localhost:8084/api**
+El backend corre en **https://senda-vida.onrender.com/api**
 
-Verifica que funciona: abre http://localhost:8084/api/health en el navegador (debe devolver `{"ok":true}`).
+Verifica que funciona: abre https://senda-vida.onrender.com/api/health en el navegador (debe devolver `{"ok":true}`).
 
 ## 4. Configurar y ejecutar la app móvil
 
@@ -61,7 +61,7 @@ Edita el archivo `.env` con tus valores:
 
 | Variable | Descripción |
 |----------|-------------|
-| `EXPO_PUBLIC_API_BASE_URL` | URL del backend. En celular físico: IP de tu PC en la misma Wi-Fi (ej: `http://192.168.1.100:8084/api`). En emulador Android: `http://10.0.2.2:8084/api` |
+| `EXPO_PUBLIC_API_BASE_URL` | URL del backend. Usa siempre `https://senda-vida.onrender.com/api` para mantener autenticación y acceso a rutas. |
 | `EXPO_PUBLIC_GBIF_SEARCH_RADIUS_KM` | Radio (km) para filtrar especies GBIF alrededor del GPS actual. Valor por defecto: `2`. |
 | `EXPO_PUBLIC_GEMINI_API_KEY` | API Key de Gemini (consíguela gratis en https://aistudio.google.com) |
 
