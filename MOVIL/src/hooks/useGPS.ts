@@ -43,6 +43,17 @@ export function useGPS() {
     }
   }, []);
 
+  const requestBackgroundPermission = useCallback(async (): Promise<void> => {
+    try {
+      const { status } = await Location.requestBackgroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('[GPS] Permiso de ubicación en background denegado. El tracking puede verse afectado al minimizar la app.');
+      }
+    } catch {
+      // No bloquear el tracking si el dispositivo no soporta background location
+    }
+  }, []);
+
   const getCurrent = useCallback(async (): Promise<GPSPoint | null> => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
@@ -52,7 +63,7 @@ export function useGPS() {
         return null;
       }
       const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+        accuracy: Location.Accuracy.High,
         mayShowUserSettingsDialog: true,
       });
       const point: GPSPoint = {
@@ -80,6 +91,7 @@ export function useGPS() {
     async (onUpdate: (point: GPSPoint) => void): Promise<boolean> => {
       const granted = await requestPermission();
       if (!granted) return false;
+      await requestBackgroundPermission();
       stopTracking();
       try {
         watchSub.current = await Location.watchPositionAsync(
@@ -120,6 +132,7 @@ export function useGPS() {
   return {
     ...state,
     requestPermission,
+    requestBackgroundPermission,
     getCurrent,
     startTracking,
     stopTracking,

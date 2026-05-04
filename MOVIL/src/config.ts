@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 // Viene del .env (EXPO_PUBLIC_API_BASE_URL).
 const ENV_API_BASE_URL = String(process.env.EXPO_PUBLIC_API_BASE_URL ?? '').trim();
 
@@ -22,7 +24,15 @@ export function normalizeApiBaseUrl(raw: string): string {
   }
 }
 
-export const GEMINI_API_KEY = String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
+function geminiApiKeyFromExtra(): string {
+  const extra = Constants.expoConfig?.extra as Record<string, unknown> | undefined;
+  return String(extra?.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim();
+}
+
+/** Clave Gemini: EXPO_PUBLIC_* en el bundle + respaldo en app.config extra (manifest). */
+export const GEMINI_API_KEY = (
+  String(process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? '').trim() || geminiApiKeyFromExtra()
+).trim();
 // Endpoint v1beta de la API Gemini (REST).
 export const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 

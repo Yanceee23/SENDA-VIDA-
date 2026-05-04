@@ -221,10 +221,13 @@ export default function LiveMapNative({
 
   const zoom = deltaToZoom(region.latitudeDelta);
 
+  // followUserLocation nativo solo en navMode cuando el usuario no ha movido el mapa.
+  // En follow_zoom se usa setCamera() programático para que cámara y punto azul
+  // siempre sigan las mismas coordenadas del contexto (RouteTrackingContext).
   const useNativeFollow = Boolean(
     followUserLocation &&
       permissionOk &&
-      ((interactionMode === 'follow_zoom') || (navMode && navFollowUser && !routeNavUserMoved))
+      navMode && navFollowUser && !routeNavUserMoved
   );
 
   const cameraHeading = navMode ? 0 : Number.isFinite(Number(heading)) ? Number(heading) : 0;
@@ -239,6 +242,15 @@ export default function LiveMapNative({
       animationDuration: 650,
     });
   }, [mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent]);
+
+  useEffect(() => {
+    if (navMode || !mapReady || !safeCurrent) return;
+    cameraRef.current?.setCamera({
+      centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
+      zoomLevel: zoom,
+      animationDuration: 500,
+    });
+  }, [mapReady, navMode, safeCurrent, zoom]);
 
   const navDefaultSettings = useMemo(
     () => ({
