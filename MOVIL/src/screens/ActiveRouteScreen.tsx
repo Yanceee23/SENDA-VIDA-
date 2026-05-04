@@ -277,6 +277,27 @@ export function ActiveRouteScreen({ navigation, route }: Props) {
           <Stat icon="🕐" label="Tiempo" value={formatHMS(tracking.elapsedSec)} />
           <Stat icon="🔥" label="Calorías" value={`${Math.round(tracking.calorias)} kcal`} />
         </View>
+        <View style={styles.precisionWrap}>
+          <Text style={styles.precisionLabel}>GPS:</Text>
+          <Pressable
+            onPress={() => void tracking.setGpsPrecisionMode('normal')}
+            style={[styles.precisionChip, tracking.gpsPrecisionMode === 'normal' && styles.precisionChipActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.precisionChipText, tracking.gpsPrecisionMode === 'normal' && styles.precisionChipTextActive]}>
+              Normal
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => void tracking.setGpsPrecisionMode('high')}
+            style={[styles.precisionChip, tracking.gpsPrecisionMode === 'high' && styles.precisionChipActive]}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.precisionChipText, tracking.gpsPrecisionMode === 'high' && styles.precisionChipTextActive]}>
+              Alta precisión
+            </Text>
+          </Pressable>
+        </View>
         <View style={styles.buttonsRow}>
           <Pressable
             onPress={onRobotPress}
@@ -403,6 +424,22 @@ const styles = StyleSheet.create({
   stat: { flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 12, gap: 4 },
   statLabel: { color: colors.muted, fontWeight: '900', fontSize: 12, fontFamily },
   statValue: { color: colors.text, fontWeight: '900', fontSize: 16, fontFamily },
+  precisionWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  precisionLabel: { color: colors.muted, fontWeight: '800', fontFamily, fontSize: 12 },
+  precisionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  precisionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  precisionChipText: { color: colors.muted, fontWeight: '800', fontFamily, fontSize: 12 },
+  precisionChipTextActive: { color: colors.primary, fontWeight: '900' },
   buttonsRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   robotBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: colors.primary },
   robotIcon: { fontSize: 28 },

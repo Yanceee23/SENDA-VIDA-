@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 
-const TRACKING_INTERVAL_MS = 5_000;
-const APPROX_FIVE_STEPS_M = 4;
+const NORMAL_TRACKING_INTERVAL_MS = 4_000;
+const HIGH_TRACKING_INTERVAL_MS = 1_000;
+const NORMAL_DISTANCE_INTERVAL_M = 4;
+const HIGH_DISTANCE_INTERVAL_M = 1;
+
+export type GPSPrecisionMode = 'normal' | 'high';
 
 export type GPSPoint = {
   lat: number;
@@ -88,17 +92,21 @@ export function useGPS() {
   }, []);
 
   const startTracking = useCallback(
-    async (onUpdate: (point: GPSPoint) => void): Promise<boolean> => {
+    async (
+      onUpdate: (point: GPSPoint) => void,
+      options?: { precisionMode?: GPSPrecisionMode }
+    ): Promise<boolean> => {
       const granted = await requestPermission();
       if (!granted) return false;
       await requestBackgroundPermission();
       stopTracking();
+      const precisionMode = options?.precisionMode ?? 'normal';
       try {
         watchSub.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: TRACKING_INTERVAL_MS,
-            distanceInterval: APPROX_FIVE_STEPS_M,
+            accuracy: precisionMode === 'high' ? Location.Accuracy.BestForNavigation : Location.Accuracy.Balanced,
+            timeInterval: precisionMode === 'high' ? HIGH_TRACKING_INTERVAL_MS : NORMAL_TRACKING_INTERVAL_MS,
+            distanceInterval: precisionMode === 'high' ? HIGH_DISTANCE_INTERVAL_M : NORMAL_DISTANCE_INTERVAL_M,
             mayShowUserSettingsDialog: true,
           },
           (position) => {

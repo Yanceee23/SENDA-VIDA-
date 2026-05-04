@@ -567,6 +567,31 @@ export function DashboardScreen() {
         <Card style={styles.liveRouteCard}>
           <Text style={styles.liveRouteTitle}>{routeTracking.routeTitle}</Text>
           <Text style={styles.liveRouteHint}>Mapa en vivo · los km suman mientras te mueves</Text>
+          <View style={styles.precisionWrap}>
+            <Text style={styles.precisionLabel}>GPS:</Text>
+            <Pressable
+              onPress={() => void routeTracking.setGpsPrecisionMode('normal')}
+              style={[styles.precisionChip, routeTracking.gpsPrecisionMode === 'normal' && styles.precisionChipActive]}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.precisionChipText, routeTracking.gpsPrecisionMode === 'normal' && styles.precisionChipTextActive]}
+              >
+                Normal
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void routeTracking.setGpsPrecisionMode('high')}
+              style={[styles.precisionChip, routeTracking.gpsPrecisionMode === 'high' && styles.precisionChipActive]}
+              accessibilityRole="button"
+            >
+              <Text
+                style={[styles.precisionChipText, routeTracking.gpsPrecisionMode === 'high' && styles.precisionChipTextActive]}
+              >
+                Alta precisión
+              </Text>
+            </Pressable>
+          </View>
           <View style={styles.liveMapBox}>
             <LiveMap
               region={routeRegion}
@@ -771,6 +796,22 @@ const styles = StyleSheet.create({
   liveRouteCard: { gap: 10, overflow: 'hidden' },
   liveRouteTitle: { color: colors.text, fontWeight: '900', fontFamily, fontSize: 16 },
   liveRouteHint: { color: colors.muted, fontWeight: '600', fontFamily, fontSize: 12 },
+  precisionWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  precisionLabel: { color: colors.muted, fontWeight: '800', fontFamily, fontSize: 12 },
+  precisionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  precisionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  precisionChipText: { color: colors.muted, fontWeight: '800', fontFamily, fontSize: 12 },
+  precisionChipTextActive: { color: colors.primary, fontWeight: '900' },
   liveMapBox: { height: 240, borderRadius: 16, overflow: 'hidden', backgroundColor: '#1C2B2A' },
   liveStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between' },
   liveStat: { color: colors.text, fontWeight: '800', fontFamily, fontSize: 13 },

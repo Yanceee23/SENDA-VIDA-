@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { Alert } from 'react-native';
-import { useGPS, type GPSPoint } from '../hooks/useGPS';
+import { useGPS, type GPSPoint, type GPSPrecisionMode } from '../hooks/useGPS';
 import { useAuth } from './AuthContext';
 import { useHydrationReminders } from './HydrationRemindersContext';
 import { useSettings } from './SettingsContext';
@@ -55,11 +55,23 @@ const MIN_PROGRESS_KM = 0.01;
 const MAX_ROUTE_START_DISTANCE_KM = 0.35;
 const MIN_DISTANCE_DELTA_KM = 0.0015;
 const MAX_DISTANCE_DELTA_KM = 0.25;
-const MIN_TRAIL_POINT_DELTA_KM = 0.004;
-const MIN_TIMED_TRAIL_DELTA_KM = 0.0005;
-const TRAIL_POINT_INTERVAL_MS = 5_000;
+const MIN_TRAIL_POINT_DELTA_KM = 0.0012;
+const MIN_TIMED_TRAIL_DELTA_KM = 0.00035;
+const TRAIL_POINT_INTERVAL_MS = 1_500;
 /** Lecturas con peor precisión no suman km pero no bloquean tanto el avance en senderismo */
 const GPS_MAX_ACCURACY_M = 115;
+/** Mantener polilíneas livianas para evitar bloqueos en dispositivos modestos */
+const MAX_TRAIL_POINTS = 450;
+const MAX_ROUTE_POINTS = 900;
+
+function decimatePolyline(points: Array<{ lat: number; lng: number }>, maxPoints: number): Array<{ lat: number; lng: number }> {
+  if (points.length <= maxPoints) return points;
+  const step = Math.ceil((points.length - 1) / (maxPoints - 1));
+  const out: Array<{ lat: number; lng: number }> = [];
+  for (let i = 0; i < points.length - 1; i += step) out.push(points[i]);
+  out.push(points[points.length - 1]);
+  return out;
+}
 
 function pointToSegmentDistanceKm(
   p: { lat: number; lng: number },
@@ -156,6 +168,8 @@ type RouteTrackingCtx = {
   destNombre: string | undefined;
   /** UI overlay title */
   routeTitle: string;
+  gpsPrecisionMode: GPSPrecisionMode;
+  setGpsPrecisionMode: (mode: GPSPrecisionMode) => Promise<void>;
   beginSession: (params: RouteSessionParams) => Promise<boolean>;
   cancelSession: () => void;
   togglePause: () => Promise<void>;
@@ -228,6 +242,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
   const [activityId, setActivityId] = useState<number | null>(null);
   const [finishPoint, setFinishPoint] = useState<{ lat: number; lng: number } | null>(null);
   const [destNombre, setDestNombre] = useState<string | undefined>(undefined);
+  const [gpsPrecisionMode, setGpsPrecisionModeState] = useState<GPSPrecisionMode>('high');
   const [meta, setMeta] = useState<{ rutaId?: number; nivelSeguridad?: string; saveToDb: boolean }>({ saveToDb: true });
 
   const reroutingRef = useRef(false);
@@ -321,7 +336,8 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
           endLat: dest.lat,
           endLng: dest.lng,
         });
-        setPlannedRoutePoints(trimRouteToRemaining(from, routeData.geometry));
+        const trimmedRoute = trimRouteToRemaining(from, routeData.geometry);
+        setPlannedRoutePoints(decimatePolyline(trimmedRoute, MAX_ROUTE_POINTS));
         setPlannedDurationMin(routeData.durationMin);
       } catch {
         // silencioso
@@ -399,7 +415,9 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
         const shouldAppendByTime = elapsedSinceTrailPoint >= TRAIL_POINT_INTERVAL_MS && delta >= MIN_TIMED_TRAIL_DELTA_KM;
         if (!lowAccuracy && (shouldAppendBySteps || shouldAppendByTime)) {
           lastTrailPointAtRef.current = now;
-          return [...prev, next];
+          const appended = [...prev, next];
+          if (appended.length <= MAX_TRAIL_POINTS) return appended;
+          return appended.slice(appended.length - MAX_TRAIL_POINTS);
         }
         return prev;
       });
@@ -481,7 +499,8 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
               endLat: destinationCoords.lat,
               endLng: destinationCoords.lng,
             });
-            setPlannedRoutePoints(trimRouteToRemaining(start, routeData.geometry));
+            const trimmedRoute = trimRouteToRemaining(start, routeData.geometry);
+            setPlannedRoutePoints(decimatePolyline(trimmedRoute, MAX_ROUTE_POINTS));
             setPlannedDurationMin(routeData.durationMin);
           } catch (e: unknown) {
             setPlannedRoutePoints([]);
@@ -502,7 +521,7 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
           setActivityId(Number(act.id));
         }
 
-        const ok = await gps.startTracking(onGpsUpdate);
+        const ok = await gps.startTracking(onGpsUpdate, { precisionMode: gpsPrecisionMode });
         if (!ok) {
           Alert.alert('GPS', gps.error ?? 'No se pudo iniciar seguimiento.');
           cancelSession();
@@ -528,7 +547,18 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
       status,
       user?.token,
       user?.userId,
+      gpsPrecisionMode,
     ]
+  );
+
+  const setGpsPrecisionMode = useCallback(
+    async (mode: GPSPrecisionMode) => {
+      setGpsPrecisionModeState(mode);
+      const shouldRestartLiveTracking = sessionOrigin != null && startedAt != null && !pausedRef.current && !finishConfirmationRef.current;
+      if (!shouldRestartLiveTracking) return;
+      await gps.startTracking(onGpsUpdate, { precisionMode: mode });
+    },
+    [gps, onGpsUpdate, sessionOrigin, startedAt]
   );
 
   const togglePause = useCallback(async () => {
@@ -540,8 +570,8 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
       if (current) lastDistancePointRef.current = current;
       return;
     }
-    await gps.startTracking(onGpsUpdate);
-  }, [current, gps, onGpsUpdate]);
+    await gps.startTracking(onGpsUpdate, { precisionMode: gpsPrecisionMode });
+  }, [current, gps, onGpsUpdate, gpsPrecisionMode]);
 
   const beginFinishConfirmation = useCallback(() => {
     if (!current) return;
@@ -720,6 +750,8 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
       gpsError: gps.error,
       destNombre,
       routeTitle,
+      gpsPrecisionMode,
+      setGpsPrecisionMode,
       beginSession,
       cancelSession,
       togglePause,
@@ -750,6 +782,8 @@ export function RouteTrackingProvider({ children }: { children: React.ReactNode 
       gps.error,
       destNombre,
       routeTitle,
+      gpsPrecisionMode,
+      setGpsPrecisionMode,
       beginSession,
       cancelSession,
       togglePause,

@@ -3,6 +3,7 @@ import { InteractionManager, Pressable, StyleSheet, Text, View } from 'react-nat
 import MapLibreGL, { CameraRef, UserTrackingMode } from '@maplibre/maplibre-react-native';
 import { colors } from '../theme/colors';
 import type { LatLng } from '../utils/gps';
+import { haversine } from '../utils/geo';
 import { normalizeLatLng } from '../utils/coordinates';
 import { OfflineSimpleMap } from './OfflineSimpleMap';
 
@@ -54,6 +55,9 @@ function validMapPoints(coords: LatLng[] | undefined): LatLng[] {
 /** Límites de puntos renderizados en el mapa para no congelar el hilo principal. */
 const MAX_RENDER_ROUTE_PTS = 350;
 const MAX_RENDER_TRAIL_PTS = 200;
+const MIN_CAMERA_MOVE_KM = 0.008; // ~8m
+const NAV_CAMERA_MIN_INTERVAL_MS = 1200;
+const FOLLOW_CAMERA_MIN_INTERVAL_MS = 900;
 
 /**
  * Reduce la cantidad de puntos conservando primero y último.
@@ -97,6 +101,9 @@ export default function LiveMapNative({
   const cameraRef = useRef<CameraRef>(null);
   const [mapReady, setMapReady] = useState(false);
   const autoFitRanForSig = useRef<string>('');
+  const fittingRef = useRef(false);
+  const lastCameraUpdateAtRef = useRef(0);
+  const lastCameraPosRef = useRef<LatLng | null>(null);
   const [routeNavUserMoved, setRouteNavUserMoved] = useState(false);
   const [navFollowUser, setNavFollowUser] = useState(true);
 
@@ -208,6 +215,23 @@ export default function LiveMapNative({
     [collectNavPoints]
   );
 
+  const shouldUpdateCamera = useCallback(
+    (next: LatLng, minIntervalMs: number) => {
+      const now = Date.now();
+      const prev = lastCameraPosRef.current;
+      const elapsed = now - lastCameraUpdateAtRef.current;
+      if (elapsed < minIntervalMs) return false;
+      if (prev) {
+        const movedKm = haversine(prev.lat, prev.lng, next.lat, next.lng);
+        if (movedKm < MIN_CAMERA_MOVE_KM) return false;
+      }
+      lastCameraUpdateAtRef.current = now;
+      lastCameraPosRef.current = next;
+      return true;
+    },
+    []
+  );
+
   useEffect(() => {
     if (!navMode) return;
     autoFitRanForSig.current = '';
@@ -258,27 +282,31 @@ export default function LiveMapNative({
       navMode && navFollowUser && !routeNavUserMoved
   );
 
-  const cameraHeading = 0; // Rotación deshabilitada para reducir carga GPU
+  const cameraHeading = typeof heading === 'number' && Number.isFinite(heading) ? heading : 0;
   const navFollowZoom = 16;
   const displayStartPoint = normalizeLatLng(startPoint, false) ?? safePoints[0] ?? safePlannedRoutePoints[0] ?? null;
 
   useEffect(() => {
     if (!navMode || !mapReady || routeNavUserMoved || !navFollowUser || !safeCurrent) return;
+    if (!shouldUpdateCamera(safeCurrent, NAV_CAMERA_MIN_INTERVAL_MS)) return;
     cameraRef.current?.setCamera({
       centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
       zoomLevel: navFollowZoom,
+      heading: cameraHeading,
       animationDuration: 650,
     });
-  }, [mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent]);
+  }, [cameraHeading, mapReady, navFollowUser, navMode, routeNavUserMoved, safeCurrent, shouldUpdateCamera]);
 
   useEffect(() => {
     if (navMode || !mapReady || !safeCurrent) return;
+    if (!shouldUpdateCamera(safeCurrent, FOLLOW_CAMERA_MIN_INTERVAL_MS)) return;
     cameraRef.current?.setCamera({
       centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
       zoomLevel: zoom,
+      heading: cameraHeading,
       animationDuration: 500,
     });
-  }, [mapReady, navMode, safeCurrent, zoom]);
+  }, [cameraHeading, mapReady, navMode, safeCurrent, zoom, shouldUpdateCamera]);
 
   const navDefaultSettings = useMemo(
     () => ({
@@ -299,7 +327,7 @@ export default function LiveMapNative({
         zoomEnabled
         scrollEnabled
         pitchEnabled={false}
-        rotateEnabled={false}
+        rotateEnabled={navMode}
         attributionEnabled={false}
         logoEnabled={false}
         onDidFinishLoadingMap={() => setMapReady(true)}
@@ -395,6 +423,7 @@ export default function LiveMapNative({
                   cameraRef.current?.setCamera({
                     centerCoordinate: [safeCurrent.lng, safeCurrent.lat],
                     zoomLevel: navFollowZoom,
+                    heading: cameraHeading,
                     animationDuration: 650,
                   });
                 }
@@ -410,9 +439,14 @@ export default function LiveMapNative({
             accessibilityLabel="Ver ruta completa"
             style={({ pressed }) => [styles.navFab, pressed && styles.navFabPressed]}
             onPress={() => {
+              if (fittingRef.current || !mapReady) return;
+              fittingRef.current = true;
               setNavFollowUser(false);
               setRouteNavUserMoved(true);
               fitRouteFrame(1200);
+              setTimeout(() => {
+                fittingRef.current = false;
+              }, 1300);
             }}
           >
             <Text style={styles.navFabText}>📍 Vista ruta</Text>
