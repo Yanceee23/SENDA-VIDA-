@@ -51,6 +51,23 @@ function validMapPoints(coords: LatLng[] | undefined): LatLng[] {
   return (coords ?? []).map((p) => normalizeLatLng(p, false)).filter((p): p is LatLng => p != null);
 }
 
+/** Límites de puntos renderizados en el mapa para no congelar el hilo principal. */
+const MAX_RENDER_ROUTE_PTS = 350;
+const MAX_RENDER_TRAIL_PTS = 200;
+
+/**
+ * Reduce la cantidad de puntos conservando primero y último.
+ * Usa muestreo uniforme; suficiente para polilíneas en pantalla.
+ */
+function decimatePoints(pts: LatLng[], maxPts: number): LatLng[] {
+  if (pts.length <= maxPts) return pts;
+  const step = Math.ceil((pts.length - 1) / (maxPts - 1));
+  const out: LatLng[] = [];
+  for (let i = 0; i < pts.length - 1; i += step) out.push(pts[i]);
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
 /** Expande muy poco bbox para rutas rectas muy cortas */
 function padTinyBox(box: { ne: [number, number]; sw: [number, number] }) {
   const pad = 0.03;
@@ -90,17 +107,17 @@ export default function LiveMapNative({
   const safeDestination = useMemo(() => normalizeLatLng(destination, false), [destination]);
   const safeFinalPoint = useMemo(() => normalizeLatLng(finalPoint, false), [finalPoint]);
 
-  const plannedGeoJson = useMemo(
-    () => ({
+  const plannedGeoJson = useMemo(() => {
+    const rendered = decimatePoints(safePlannedRoutePoints, MAX_RENDER_ROUTE_PTS);
+    return {
       type: 'Feature' as const,
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: safePlannedRoutePoints.map((p) => [p.lng, p.lat]),
+        coordinates: rendered.map((p) => [p.lng, p.lat]),
       },
-    }),
-    [safePlannedRoutePoints]
-  );
+    };
+  }, [safePlannedRoutePoints]);
 
   const trailLinePoints = useMemo(() => {
     const base = safePoints;
@@ -112,17 +129,17 @@ export default function LiveMapNative({
     return [...base, safeCurrent];
   }, [safePoints, safeCurrent]);
 
-  const trailGeoJson = useMemo(
-    () => ({
+  const trailGeoJson = useMemo(() => {
+    const rendered = decimatePoints(trailLinePoints, MAX_RENDER_TRAIL_PTS);
+    return {
       type: 'Feature' as const,
       properties: {},
       geometry: {
         type: 'LineString' as const,
-        coordinates: trailLinePoints.map((p) => [p.lng, p.lat]),
+        coordinates: rendered.map((p) => [p.lng, p.lat]),
       },
-    }),
-    [trailLinePoints]
-  );
+    };
+  }, [trailLinePoints]);
 
   const currentGeoJson = useMemo(
     () => ({
@@ -241,7 +258,7 @@ export default function LiveMapNative({
       navMode && navFollowUser && !routeNavUserMoved
   );
 
-  const cameraHeading = navMode ? 0 : Number.isFinite(Number(heading)) ? Number(heading) : 0;
+  const cameraHeading = 0; // Rotación deshabilitada para reducir carga GPU
   const navFollowZoom = 16;
   const displayStartPoint = normalizeLatLng(startPoint, false) ?? safePoints[0] ?? safePlannedRoutePoints[0] ?? null;
 
@@ -278,14 +295,15 @@ export default function LiveMapNative({
     <View style={StyleSheet.absoluteFill}>
       <MapLibreGL.MapView
         style={StyleSheet.absoluteFill}
-        mapStyle="https://tiles.openfreemap.org/styles/liberty"
+        mapStyle="https://tiles.openfreemap.org/styles/positron"
         zoomEnabled
         scrollEnabled
-        pitchEnabled={!navMode}
-        rotateEnabled
+        pitchEnabled={false}
+        rotateEnabled={false}
+        attributionEnabled={false}
+        logoEnabled={false}
         onDidFinishLoadingMap={() => setMapReady(true)}
-        onRegionWillChange={onRegionUserChange as any}
-        onRegionDidChange={onRegionUserChange as any}
+        onRegionDidChange={navMode ? (onRegionUserChange as any) : undefined}
       >
         <MapLibreGL.Camera
           ref={cameraRef}
